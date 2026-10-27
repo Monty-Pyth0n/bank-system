@@ -11,7 +11,29 @@ class AccountStatus(Enum):
     FROZEN = "frozen"
     CLOSED = "closed"
 
-# 1. Abstract account
+
+# Exceptions
+class AccountFrozenError(Exception):
+    """Raised when an operation is attempted on a frozen account."""
+    pass
+
+
+class AccountClosedError(Exception):
+    """Raised when an operation is attempted on a closed account."""
+    pass
+
+
+class InvalidOperationError(Exception):
+    """Raised when an invalid operation or argument is provided."""
+    pass
+
+
+class InsufficientFundsError(Exception):
+    """Raised when the account has insufficient funds."""
+    pass
+
+
+# Abstract account
 class AbstractAccount(ABC):
 
     def __init__(self, owner, balance=0, account_number=None):
@@ -63,7 +85,7 @@ class AbstractAccount(ABC):
         pass
 
 
-# 2. Bank account
+# Bank account
 class BankAccount(AbstractAccount):
 
     ALLOWED_CURRENCIES = {"RUB", "USD", "EUR", "KZT", "CNY"}
