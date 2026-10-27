@@ -8,9 +8,11 @@ from src.models import (
 )
 
 def main():
-    print("Bank Account System")
-    
-    print("=== Creating accounts ===")
+
+    print("===============================")
+    print("      Bank Account System")
+    print("===============================")
+    print("\n=== Creating accounts ===")
 
     # Active account
     active_account = BankAccount(

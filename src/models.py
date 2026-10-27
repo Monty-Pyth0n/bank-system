@@ -3,6 +3,8 @@ from decimal import Decimal, InvalidOperation
 from enum import Enum
 from uuid import uuid4
 
+from src.utils import generate_account_number
+
 
 
 # Account status
@@ -45,7 +47,7 @@ class AbstractAccount(ABC):
         self._account_number = (
             str(account_number).strip()
             if account_number is not None
-            else uuid4().hex[:8].upper()
+            else generate_account_number()
         )
 
         if not self._account_number:
