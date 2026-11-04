@@ -1,4 +1,4 @@
-from src.models import (
+from src.models import (  # noqa: I001
     BankAccount,
     AccountStatus,
     InvalidOperationError,

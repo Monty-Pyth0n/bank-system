@@ -1,10 +1,8 @@
 from abc import ABC, abstractmethod
 from decimal import Decimal, InvalidOperation
 from enum import Enum
-from uuid import uuid4
 
 from src.utils import generate_account_number
-
 
 
 # Account status
@@ -17,22 +15,18 @@ class AccountStatus(Enum):
 # Exceptions
 class AccountFrozenError(Exception):
     """Raised when an operation is attempted on a frozen account."""
-    pass
 
 
 class AccountClosedError(Exception):
     """Raised when an operation is attempted on a closed account."""
-    pass
 
 
 class InvalidOperationError(Exception):
     """Raised when an invalid operation or argument is provided."""
-    pass
-
+  
 
 class InsufficientFundsError(Exception):
     """Raised when the account has insufficient funds."""
-    pass
 
 
 # Abstract account
@@ -90,7 +84,7 @@ class AbstractAccount(ABC):
 # Bank account
 class BankAccount(AbstractAccount):
 
-    ALLOWED_CURRENCIES = {"RUB", "USD", "EUR", "KZT", "CNY"}
+    ALLOWED_CURRENCIES = {"RUB", "USD", "EUR", "KZT", "CNY"}  # noqa: RUF012
 
     def __init__(
         self,
