@@ -23,7 +23,7 @@ class AccountClosedError(Exception):
 
 class InvalidOperationError(Exception):
     """Raised when an invalid operation or argument is provided."""
-  
+
 
 class InsufficientFundsError(Exception):
     """Raised when the account has insufficient funds."""
@@ -202,62 +202,129 @@ class BankAccount(AbstractAccount):
             f"Balance: {self._balance:.2f} {self.currency}"
         )
 
-class SavingAccount(BankAccount):
-    def __init__(self, 
-                 owner, 
-                 balance=0, 
-                 account_number=None,
-                 currency="RUB",
-                 status=AccountStatus.ACTIVE,
-                 min_balance=0,
-                 interest_rate='0.01'):
-        super().__init__(owner, 
-                         balance, 
-                         account_number, 
-                         currency, 
-                         status)
+
+# Savings account
+class SavingsAccount(BankAccount):
+    """Savings account with minimum balance and monthly interest."""
+
+    def __init__(
+        self,
+        owner,
+        balance=0,
+        account_number=None,
+        currency="RUB",
+        status=AccountStatus.ACTIVE,
+        min_balance=0,
+        interest_rate=0.01,
+    ):
+        super().__init__(owner, balance, account_number, currency, status)
         self.min_balance = self._validate_amount(min_balance)
         self.interest_rate = interest_rate
+
+    def withdraw(self, amount):
+        self._check_status()
+        amount = self._validate_amount(amount)
+
+        if amount == 0:
+            raise InvalidOperationError("Withdrawal amount must be greater than zero.")
+
+        if self._balance - amount < self.min_balance:
+            raise InsufficientFundsError(
+                f"Cannot withdraw below minimum balance of {self.min_balance}. "
+                f"Available: {self._balance - self.min_balance}"
+            )
+
+        self._balance -= amount
+        return self._balance
+
+    def apply_monthly_interest(self):
+        """Apply monthly interest to the account balance."""
+        self._check_status()
+        interest = self._balance * self.interest_rate
+        self._balance += interest
+        return self._balance
+
+    def get_account_info(self):
+        info = super().get_account_info()
+        info.update(
+            {
+                "account_type": type(self).__name__,
+                "min_balance": self.min_balance,
+                "interest_rate": self.interest_rate,
+            }
+        )
+        return info
+
+    def __str__(self):
+        last_four = self._account_number[-4:]
+
+        return (
+            f"Account type: {type(self).__name__} | "
+            f"Customer: {self._owner} | "
+            f"Account: ****{last_four} | "
+            f"Status: {self._status.value} | "
+            f"Balance: {self._balance:.2f} {self.currency} | "
+            f"Min balance: {self.min_balance:.2f} {self.currency} | "
+            f"Interest rate: {self.interest_rate * 100:.2f}%"
+        )
+
+
+# Premium account
+class PremiumAccount(BankAccount):
+    """Premium account with higher limits, overdraft facility, and fixed fee."""
+
+    def __init__(
+        self,
+        owner,
+        balance=0,
+        account_number=None,
+        currency="RUB",
+        status=AccountStatus.ACTIVE,
+        overdraft_limit=50000,
+        fixed_fee=100,
+    ):
+        super().__init__(owner, balance, account_number, currency, status)
+        self.overdraft_limit = self._validate_amount(overdraft_limit)
+        self.fixed_fee = self._validate_amount(fixed_fee)
 
         def withdraw(self, amount):
             self._check_status()
             amount = self._validate_amount(amount)
+
             if amount == 0:
                 raise InvalidOperationError("Withdrawal amount must be greater than zero.")
-            if self._balance - amount < self.min_balance:
-                raise InsufficientFundsError(
-                    f"Cannot withdraw below minimum balance of {self.min_balance}. "
-                    f"Available: {self._balance - self.min_balance}"
-                )
-            self._balance -= amount
-            return self._balance
 
-        def apply_monthly_interest(self):
-            """Apply monthly interest to the account balance."""
-            self._check_status()
-            interest = self._balance * Decimal(self.interest_rate) / Decimal(12)
-            self._balance += interest
+            total_with_fee = amount + self.fixed_fee
+            available = self._balance + self.overdraft_limit
+
+            if total_with_fee > available:
+                raise InsufficientFundsError(
+                    f"Insufficient funds. Available with overdraft: {available}"
+                )
+
+            self._balance -= total_with_fee
             return self._balance
 
         def get_account_info(self):
             info = super().get_account_info()
-            info.update({
-                "min_balance": self.min_balance,
-                "interest_rate": self.interest_rate,
-            })
+            info.update(
+                {
+                    "account_type": type(self).__name__,
+                    "overdraft_limit": self.overdraft_limit,
+                    "fixed_fee": self.fixed_fee,
+                }
+            )
             return info
 
         def __str__(self):
             last_four = self._account_number[-4:]
+
             return (
                 f"Account type: {type(self).__name__} | "
                 f"Customer: {self._owner} | "
                 f"Account: ****{last_four} | "
                 f"Status: {self._status.value} | "
                 f"Balance: {self._balance:.2f} {self.currency} | "
-                f"Min Balance: {self.min_balance:.2f} {self.currency} | "
-                f"Interest Rate: {self.interest_rate}"
+                f"Overdraft limit: {self.overdraft_limit:.2f} {self.currency} | "
+                f"Fixed fee: {self.fixed_fee:.2f} {self.currency}"
             )
-                
-            
-
