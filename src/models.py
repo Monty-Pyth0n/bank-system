@@ -201,4 +201,63 @@ class BankAccount(AbstractAccount):
             f"Status: {self._status.value} | "
             f"Balance: {self._balance:.2f} {self.currency}"
         )
-    
+
+class SavingAccount(BankAccount):
+    def __init__(self, 
+                 owner, 
+                 balance=0, 
+                 account_number=None,
+                 currency="RUB",
+                 status=AccountStatus.ACTIVE,
+                 min_balance=0,
+                 interest_rate='0.01'):
+        super().__init__(owner, 
+                         balance, 
+                         account_number, 
+                         currency, 
+                         status)
+        self.min_balance = self._validate_amount(min_balance)
+        self.interest_rate = interest_rate
+
+        def withdraw(self, amount):
+            self._check_status()
+            amount = self._validate_amount(amount)
+            if amount == 0:
+                raise InvalidOperationError("Withdrawal amount must be greater than zero.")
+            if self._balance - amount < self.min_balance:
+                raise InsufficientFundsError(
+                    f"Cannot withdraw below minimum balance of {self.min_balance}. "
+                    f"Available: {self._balance - self.min_balance}"
+                )
+            self._balance -= amount
+            return self._balance
+
+        def apply_monthly_interest(self):
+            """Apply monthly interest to the account balance."""
+            self._check_status()
+            interest = self._balance * Decimal(self.interest_rate) / Decimal(12)
+            self._balance += interest
+            return self._balance
+
+        def get_account_info(self):
+            info = super().get_account_info()
+            info.update({
+                "min_balance": self.min_balance,
+                "interest_rate": self.interest_rate,
+            })
+            return info
+
+        def __str__(self):
+            last_four = self._account_number[-4:]
+            return (
+                f"Account type: {type(self).__name__} | "
+                f"Customer: {self._owner} | "
+                f"Account: ****{last_four} | "
+                f"Status: {self._status.value} | "
+                f"Balance: {self._balance:.2f} {self.currency} | "
+                f"Min Balance: {self.min_balance:.2f} {self.currency} | "
+                f"Interest Rate: {self.interest_rate}"
+            )
+                
+            
+
