@@ -20,7 +20,7 @@ def test_create_account():
     )
 
     assert account.owner == "Ivan Petrov"
-    assert account.balance == Decimal(1000)
+    assert account.balance == Decimal('1000.00')   
     assert account.currency == "RUB"
     assert account.status == AccountStatus.ACTIVE
     assert account.account_number
@@ -31,7 +31,7 @@ def test_deposit():
 
     account.deposit(250)
 
-    assert account.balance == Decimal(1250)
+    assert account.balance == Decimal('1250.00')
 
 
 def test_withdraw():
@@ -39,7 +39,7 @@ def test_withdraw():
 
     account.withdraw(300)
 
-    assert account.balance == Decimal(700)
+    assert account.balance == Decimal('700.00')
 
 
 def test_frozen_account_cannot_deposit():
@@ -52,7 +52,7 @@ def test_frozen_account_cannot_deposit():
     with pytest.raises(AccountFrozenError):
         account.deposit(100)
 
-    assert account.balance == Decimal(500)
+    assert account.balance == Decimal('500.00')
 
 
 def test_frozen_account_cannot_withdraw():
@@ -65,7 +65,7 @@ def test_frozen_account_cannot_withdraw():
     with pytest.raises(AccountFrozenError):
         account.withdraw(100)
 
-    assert account.balance == Decimal(500)
+    assert account.balance == Decimal('500.00')
 
 
 def test_insufficient_funds():
@@ -74,7 +74,7 @@ def test_insufficient_funds():
     with pytest.raises(InsufficientFundsError):
         account.withdraw(200)
 
-    assert account.balance == Decimal(100)
+    assert account.balance == Decimal('100.00')
 
 
 def test_negative_deposit():
@@ -83,7 +83,7 @@ def test_negative_deposit():
     with pytest.raises(InvalidOperationError):
         account.deposit(-50)
 
-    assert account.balance == Decimal(100)
+    assert account.balance == Decimal('100.00')
 
 
 def test_zero_deposit():
@@ -92,7 +92,7 @@ def test_zero_deposit():
     with pytest.raises(InvalidOperationError):
         account.deposit(0)
 
-    assert account.balance == Decimal(100)
+    assert account.balance == Decimal('100.00')
 
 
 def test_closed_account_cannot_deposit():
@@ -102,7 +102,7 @@ def test_closed_account_cannot_deposit():
     with pytest.raises(AccountClosedError):
         account.deposit(50)
 
-    assert account.balance == Decimal(100)
+    assert account.balance == Decimal('100.00')
 
 
 def test_invalid_currency():
