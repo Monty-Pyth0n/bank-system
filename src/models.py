@@ -328,3 +328,102 @@ class PremiumAccount(BankAccount):
                 f"Overdraft limit: {self.overdraft_limit:.2f} {self.currency} | "
                 f"Fixed fee: {self.fixed_fee:.2f} {self.currency}"
             )
+
+
+#Investment account
+class InvestmentAccount(BankAccount):
+    """Investment account with portfolio management across asset types."""
+
+    SUPPORTED_ASSET_TYPES = {"stocks", "bonds", "etf"}  # noqa: RUF012
+
+    def __init__(
+        self,
+        owner,
+        balance=0,
+        account_number=None,
+        currency="RUB",
+        status=AccountStatus.ACTIVE,
+    ):
+        super().__init__(owner, balance, account_number, currency, status)
+        self.portfolio = {asset: Decimal(0) for asset in self.SUPPORTED_ASSET_TYPES}
+
+    def withdraw(self, amount):
+        self._check_status()
+        amount = self._validate_amount(amount)
+
+        if amount == 0:
+            raise InvalidOperationError("Withdrawal amount must be greater than zero.")
+
+        if amount > self._balance:
+            raise InsufficientFundsError(
+                "Insufficient funds to complete the withdrawal."
+            )
+
+        self._balance -= amount
+        return self._balance
+
+    def allocated(self, asset_type, amount):
+        """Allocate funds to a specific asset type in the investment portfolio."""
+        self._check_status()
+        amount = self._validate_amount(amount)
+
+        if asset_type not in self.SUPPORTED_ASSET_TYPES:
+            raise InvalidOperationError(
+                f"Unsupported asset type: {asset_type}. "
+                f"Supported types: {', '.join(sorted(self.SUPPORTED_ASSET_TYPES))}"
+            )
+
+        if amount <= 0:
+            raise InvalidOperationError("Allocation amount must be greater than zero.")
+
+        if amount > self._balance:
+            raise InsufficientFundsError(
+                "Insufficient funds to allocation"
+            )
+
+        self._balance -= amount
+        self.portfolio[asset_type] += amount
+        return self.portfolio[asset_type]
+
+    def project_yearly_growth(self, growth_rates):
+        """Calculate expected annual growth based on the growth rates per asset type."""
+        self._check_status()
+
+        for asset_type in growth_rates:
+            if asset_type not in self.SUPPORTED_ASSET_TYPES:
+                raise InvalidOperationError(
+                    f"Unsupported asset type: {asset_type}. "
+                    f"Supported types: {', '.join(sorted(self.SUPPORTED_ASSET_TYPES))}"
+                )
+
+        total_growth = Decimal(0)
+        for asset_type, rate in growth_rates.items():
+            total_growth += self.portfolio[asset_type] * Decimal(str(rate))
+
+        return total_growth
+
+    def get_account_info(self):
+        info = super().get_account_info()
+        info.update(
+            {
+                "account_type": type(self).__name__,
+                "portfolio": {k: str(v) for k, v in self.portfolio.items()},
+                "portfolio_value": str(sum(self.portfolio.values())),
+                "total_value": str(self._balance + sum(self.portfolio.values())),
+            }
+        )
+        return info
+
+    def __str__(self):
+        last_four = self._account_number[-4:]
+        portfolio_str = ', '.join(f"{k}: {v:.2f}" for k, v in self.portfolio.items())   
+        
+        return (
+            f"Account type: {type(self).__name__} | "
+            f"Customer: {self._owner} | "
+            f"Account: ****{last_four} | "
+            f"Status: {self._status.value} | "
+            f"Balance: {self._balance:.2f} {self.currency} | "
+            f"Portfolio: {portfolio_str}"
+        )
+    
