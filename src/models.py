@@ -1,8 +1,9 @@
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod  # noqa: I001
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 
 from src.utils import generate_account_number
+from src.utils import build_account_table
 
 
 # Account status
@@ -194,13 +195,23 @@ class BankAccount(AbstractAccount):
     def __str__(self):
         last_four = self._account_number[-4:]
 
-        return (
-            f"Account type: {type(self).__name__} | "
-            f"Customer: {self._owner} | "
-            f"Account: ****{last_four} | "
-            f"Status: {self._status.value} | "
-            f"Balance: {self._balance:.2f} {self.currency}"
-        )
+        rows = [
+            ("Account type", type(self).__name__),
+            ("Customer", self._owner),
+            ("Account", f"****{last_four}"),
+            ("Status", self._status.value),
+            ("Balance", f"{self._balance:.2f} {self.currency}"),
+        ]
+        
+        return build_account_table(rows)
+
+        # return (
+        #     f"Account type: {type(self).__name__:<{name_width}}|\n"
+        #     f"Customer: {self._owner:<{owner_width}}|\n"
+        #     f"Account: ****{last_four}:>{account_width - 4}|\n"
+        #     f"Status: {self._status.value:<{status_width}}|\n"
+        #     f"Balance: {self._balance:.2f} {self.currency:>{balance_width - 4}}|\n"
+        # )
 
 
 # Savings account
@@ -258,15 +269,17 @@ class SavingsAccount(BankAccount):
     def __str__(self):
         last_four = self._account_number[-4:]
 
-        return (
-            f"Account type: {type(self).__name__} | "
-            f"Customer: {self._owner} | "
-            f"Account: ****{last_four} | "
-            f"Status: {self._status.value} | "
-            f"Balance: {self._balance:.2f} {self.currency} | "
-            f"Min balance: {self.min_balance:.2f} {self.currency} | "
-            f"Interest rate: {self.interest_rate * 100:.2f}%"
-        )
+        rows = [
+            ("Account type", type(self).__name__),
+            ("Customer", self._owner),
+            ("Account", f"****{last_four}"),
+            ("Status", self._status.value),
+            ("Min balance", f"{self.min_balance:.2f} {self.currency}"),
+            ("Interest rate", f"{self.interest_rate * 100:.2f}%"),
+            ("Balance", f"{self._balance:.2f} {self.currency}"),
+        ]
+
+        return build_account_table(rows)
 
 
 # Premium account
@@ -319,16 +332,17 @@ class PremiumAccount(BankAccount):
     def __str__(self):
         last_four = self._account_number[-4:]
 
-        return (
-            f"Account type: {type(self).__name__} | "
-            f"Customer: {self._owner} | "
-            f"Account: ****{last_four} | "
-            f"Status: {self._status.value} | "
-            f"Balance: {self._balance:.2f} {self.currency} | "
-            f"Overdraft limit: {self.overdraft_limit:.2f} {self.currency} | "
-            f"Fixed fee: {self.fixed_fee:.2f} {self.currency}"
-        )
+        rows = [
+            ("Account type", type(self).__name__),
+            ("Customer", self._owner),
+            ("Account", f"****{last_four}"),
+            ("Status", self._status.value),
+            ("Overdraft limit", f"{self.overdraft_limit:.2f} {self.currency}"),
+            ("Fixed fee", f"{self.fixed_fee:.2f} {self.currency}"),
+            ("Balance", f"{self._balance:.2f} {self.currency}"),
+        ]
 
+        return build_account_table(rows)
 
 #Investment account
 class InvestmentAccount(BankAccount):
@@ -420,15 +434,18 @@ class InvestmentAccount(BankAccount):
 
     def __str__(self):
         last_four = self._account_number[-4:]
+
         portfolio_str = ', '.join(f"{k}: {v:.2f}" for k, v in self.portfolio.items())
         total_value = self._balance + sum(self.portfolio.values())
         
-        return (
-            f"Account type: {type(self).__name__} | "
-            f"Customer: {self._owner} | "
-            f"Account: ****{last_four} | "
-            f"Status: {self._status.value} | "
-            f"Balance: {total_value:.2f} {self.currency} | "
-            f"Portfolio: {portfolio_str}"
-        )
+        rows = [
+            ("Account type", type(self).__name__),
+            ("Customer", self._owner),
+            ("Account", f"****{last_four}"),
+            ("Status", self._status.value),
+            ("Portfolio", portfolio_str),
+            ("Balance", f"{total_value:.2f} {self.currency}"),
+        ]
+
+        return build_account_table(rows)
     
