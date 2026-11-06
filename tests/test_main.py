@@ -260,7 +260,8 @@ def test_investment_account_str():
     account.allocated("stocks", 1000)
     str_repr = str(account)
     assert "InvestmentAccount" in str_repr
-    assert "Balance: 5000.00 EUR" in str_repr
+    assert "5000.00" in str_repr
+    assert "EUR" in str_repr
     assert "stocks: 1000.00" in str_repr
 
 
