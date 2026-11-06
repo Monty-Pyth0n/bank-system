@@ -231,7 +231,7 @@ def test_investment_account_project_yearly_growth():
     account.allocated("bonds", 500)
     account.allocated("etf", 300)
     growth = account.project_yearly_growth({"stocks": 0.10, "bonds": 0.04, "etf": 0.07})
-    expected_growth = Decimal("150.00")  # 1000*0.10 + 500*0.04 + 300*0.07
+    expected_growth = Decimal("141.00")  # 1000*0.10 + 500*0.04 + 300*0.07
     assert growth == expected_growth
 
 
@@ -252,7 +252,7 @@ def test_investment_account_get_account_info():
     account.allocated("stocks", 1000)
     info = account.get_account_info()
     assert info["portfolio_value"] == Decimal("1000.00")
-    assert info["total_value"] == Decimal("6000.00")
+    assert info["total_value"] == Decimal("5000.00")
 
 
 def test_investment_account_str():
