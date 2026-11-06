@@ -1,5 +1,8 @@
 from src.models import (  # noqa: I001
     BankAccount,
+    SavingsAccount,
+    PremiumAccount,
+    InvestmentAccount,
     AccountStatus,
     InvalidOperationError,
     InsufficientFundsError,
@@ -37,11 +40,11 @@ def main():
 
     try:
         active_account.deposit(250)
-        print("Deposit of 250 RUB successful.")
+        print(f"Deposit of 250 {active_account.currency} successful.")
         print(active_account)
 
         active_account.withdraw(100)
-        print("Withdrawal of 100 RUB successful.")
+        print(f"Withdrawal of 100 {active_account.currency} successful.")
         print(active_account)
 
     except (
@@ -81,6 +84,77 @@ def main():
     # Account information
     print("\n=== Account information ===")
     print(active_account.get_account_info())
+
+    # Day 2: Portfolio management
+    print("\n=== Portfolio management ===")
+
+    # Savings account
+    savings = SavingsAccount(
+        owner="Ivan Petrov",
+        balance=1000,
+        currency="RUB",
+        min_balance=100,
+        interest_rate=0.05
+    )
+    print(savings)
+    print(f"Account info: {savings.get_account_info()}\n")
+
+    try:
+        savings.withdraw(950)
+        print(f"Withdrawal of 950 {savings.currency} successful.")
+        print(savings)
+    except InsufficientFundsError as error:
+        print(f"Withdrawal rejected: {error}")
+
+    try:
+        savings.withdraw(100)
+    except InsufficientFundsError as error:
+        print(f"Withdrawal rejected: {error}")
+
+    # Apply monthly interest
+    savings.apply_monthly_interest()
+    print("After monthly interest:")
+    print(savings)
+
+    # Premium account
+    premium = PremiumAccount(
+        owner="Anna Smirnova",
+        balance=500,
+        currency="RUB",
+        overdraft_limit=1000,
+        fixed_fee=10
+    )
+    print(premium)
+    print(f"Account info: {premium.get_account_info()}\n")
+
+    try:
+        premium.withdraw(600)
+        print("Withdrawal of 600 RUB successful (with overdraft).")
+        print(premium)
+    except InsufficientFundsError as error:
+        print(f"Withdrawal rejected: {error}")
+
+    # Investment account
+    investment = InvestmentAccount(
+        owner="Petr Ivanov",
+        balance=5000,
+        currency="EUR"
+    )
+    print(investment)
+    print(f"Account info: {investment.get_account_info()}\n")
+
+    investment.allocated("stocks", 1000)
+    investment.allocated("bonds", 500)
+    investment.allocated("etf", 300)
+    print("After portfolio allocation:")
+    print(investment)
+    print(f"Account info: {investment.get_account_info()}\n")
+
+    # Project yearly growth
+    growth = investment.project_yearly_growth(
+        {"stocks": 0.10, "bonds": 0.04, "etf": 0.07}
+    )
+    print(f"Projected yearly growth: {growth:.2f} {investment.currency}")
 
 if __name__ == "__main__":
     main()
