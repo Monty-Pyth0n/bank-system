@@ -86,6 +86,7 @@ class AbstractAccount(ABC):
 class BankAccount(AbstractAccount):
 
     ALLOWED_CURRENCIES = {"RUB", "USD", "EUR", "KZT", "CNY"}  # noqa: RUF012
+    DEFAULT_WITHDRAWAL_LIMIT = Decimal("100000.00")  # Default daily withdrawal limit
 
     def __init__(
         self,
@@ -93,7 +94,8 @@ class BankAccount(AbstractAccount):
         balance=0,
         account_number=None,
         currency="RUB",
-        status=AccountStatus.ACTIVE
+        status=AccountStatus.ACTIVE,
+        withdrawal_limit=None
     ):
         super().__init__(owner, balance, account_number)
 
@@ -113,6 +115,7 @@ class BankAccount(AbstractAccount):
 
         self.currency = currency
         self._status = status
+        self.withdrawal_limit = self._validate_amount(withdrawal_limit) if withdrawal_limit is not None else self.DEFAULT_WITHDRAWAL_LIMIT
 
 
     @property
@@ -156,6 +159,11 @@ class BankAccount(AbstractAccount):
         if amount == 0:
             raise InvalidOperationError("Withdrawal amount must be greater than zero.")
 
+        if amount > self.withdrawal_limit:
+            raise InsufficientFundsError(
+                f"Withdrawal amount exceeds daily limit of {self.withdrawal_limit}"
+            )
+
         if amount > self._balance:
             raise InsufficientFundsError(
                 "Insufficient funds to complete the withdrawal."
@@ -190,6 +198,7 @@ class BankAccount(AbstractAccount):
             "balance": self._balance,
             "currency": self.currency,
             "status": self._status.value,
+            "withdrawal_limit": self.withdrawal_limit,
         }
 
     def __str__(self):
@@ -200,18 +209,11 @@ class BankAccount(AbstractAccount):
             ("Customer", self._owner),
             ("Account", f"****{last_four}"),
             ("Status", self._status.value),
+            ("Withdrawal limit", f"{self.withdrawal_limit:.2f} {self.currency}"),
             ("Balance", f"{self._balance:.2f} {self.currency}"),
         ]
         
         return build_account_table(rows)
-
-        # return (
-        #     f"Account type: {type(self).__name__:<{name_width}}|\n"
-        #     f"Customer: {self._owner:<{owner_width}}|\n"
-        #     f"Account: ****{last_four}:>{account_width - 4}|\n"
-        #     f"Status: {self._status.value:<{status_width}}|\n"
-        #     f"Balance: {self._balance:.2f} {self.currency:>{balance_width - 4}}|\n"
-        # )
 
 
 # Savings account
@@ -227,8 +229,9 @@ class SavingsAccount(BankAccount):
         status=AccountStatus.ACTIVE,
         min_balance=0,
         interest_rate=0.01,
+        withdrawal_limit=None,
     ):
-        super().__init__(owner, balance, account_number, currency, status)
+        super().__init__(owner, balance, account_number, currency, status, withdrawal_limit)
         self.min_balance = self._validate_amount(min_balance)
         self.interest_rate = interest_rate
 
@@ -238,6 +241,11 @@ class SavingsAccount(BankAccount):
 
         if amount == 0:
             raise InvalidOperationError("Withdrawal amount must be greater than zero.")
+
+        if amount > self.withdrawal_limit:
+                    raise InsufficientFundsError(
+                        f"Withdrawal amount exceeds daily limit of {self.withdrawal_limit}"
+                    )
 
         if self._balance - amount < self.min_balance:
             raise InsufficientFundsError(
@@ -275,6 +283,7 @@ class SavingsAccount(BankAccount):
             ("Account", f"****{last_four}"),
             ("Status", self._status.value),
             ("Min balance", f"{self.min_balance:.2f} {self.currency}"),
+            ("Withdrawal limit", f"{self.withdrawal_limit:.2f} {self.currency}"),
             ("Interest rate", f"{self.interest_rate * 100:.2f}%"),
             ("Balance", f"{self._balance:.2f} {self.currency}"),
         ]
@@ -286,6 +295,8 @@ class SavingsAccount(BankAccount):
 class PremiumAccount(BankAccount):
     """Premium account with higher limits, overdraft facility, and fixed fee."""
 
+    DEFAULT_WITHDRAWAL_LIMIT = Decimal("500000.00")  # Higher daily withdrawal limit for premium
+
     def __init__(
         self,
         owner,
@@ -295,8 +306,9 @@ class PremiumAccount(BankAccount):
         status=AccountStatus.ACTIVE,
         overdraft_limit=50000,
         fixed_fee=100,
+        withdrawal_limit=None
     ):
-        super().__init__(owner, balance, account_number, currency, status)
+        super().__init__(owner, balance, account_number, currency, status, withdrawal_limit)
         self.overdraft_limit = self._validate_amount(overdraft_limit)
         self.fixed_fee = self._validate_amount(fixed_fee)
 
@@ -306,6 +318,11 @@ class PremiumAccount(BankAccount):
 
         if amount == 0:
             raise InvalidOperationError("Withdrawal amount must be greater than zero.")
+
+        if amount > self.withdrawal_limit:
+            raise InsufficientFundsError(
+                f"Withdrawal amount exceeds daily limit of {self.withdrawal_limit}"
+            )
 
         total_with_fee = amount + self.fixed_fee
         available = self._balance + self.overdraft_limit
@@ -325,6 +342,7 @@ class PremiumAccount(BankAccount):
                 "account_type": type(self).__name__,
                 "overdraft_limit": self.overdraft_limit,
                 "fixed_fee": self.fixed_fee,
+                "withdrawal_limit": self.withdrawal_limit,
             }
         )
         return info
@@ -337,6 +355,7 @@ class PremiumAccount(BankAccount):
             ("Customer", self._owner),
             ("Account", f"****{last_four}"),
             ("Status", self._status.value),
+            ("Withdrawal limit", f"{self.withdrawal_limit:.2f} {self.currency}"),
             ("Overdraft limit", f"{self.overdraft_limit:.2f} {self.currency}"),
             ("Fixed fee", f"{self.fixed_fee:.2f} {self.currency}"),
             ("Balance", f"{self._balance:.2f} {self.currency}"),
@@ -357,8 +376,9 @@ class InvestmentAccount(BankAccount):
         account_number=None,
         currency="RUB",
         status=AccountStatus.ACTIVE,
+        withdrawal_limit=None,
     ):
-        super().__init__(owner, balance, account_number, currency, status)
+        super().__init__(owner, balance, account_number, currency, status, withdrawal_limit)
         self.portfolio = {asset: Decimal(0) for asset in self.SUPPORTED_ASSET_TYPES}
 
     def withdraw(self, amount):
@@ -367,6 +387,11 @@ class InvestmentAccount(BankAccount):
 
         if amount == 0:
             raise InvalidOperationError("Withdrawal amount must be greater than zero.")
+
+        if amount > self.withdrawal_limit:
+            raise InsufficientFundsError(
+                f"Withdrawal amount exceeds daily limit of {self.withdrawal_limit}"
+            )
 
         if amount > self._balance:
             raise InsufficientFundsError(
@@ -441,6 +466,7 @@ class InvestmentAccount(BankAccount):
             ("Customer", self._owner),
             ("Account", f"****{last_four}"),
             ("Status", self._status.value),
+            ("Withdrawal limit", f"{self.withdrawal_limit:.2f} {self.currency}"),
             ("Portfolio", portfolio_str),
             ("Balance", f"{total_value:.2f} {self.currency}"),
         ]
