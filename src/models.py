@@ -390,9 +390,7 @@ class InvestmentAccount(BankAccount):
         if amount <= 0:
             raise InvalidOperationError("Allocation amount must be greater than zero.")
 
-        # Allow allocation even with 0 balance for test_investment_account_project_yearly_growth
-        # but still check for insufficient funds when balance > 0
-        if self._balance > 0 and amount > self._balance:
+        if amount > self._balance:
             raise InsufficientFundsError(
                 "Insufficient funds to allocation"
             )

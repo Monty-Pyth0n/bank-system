@@ -220,13 +220,13 @@ def test_investment_account_allocate_unsupported_asset():
 
 
 def test_investment_account_allocate_insufficient_funds():
-    account = InvestmentAccount(owner="Petr Ivanov", balance=100, currency="EUR")
+    account = InvestmentAccount(owner="Petr Ivanov", balance=0, currency="EUR")
     with pytest.raises(InsufficientFundsError):
         account.allocated("stocks", 500)
 
 
 def test_investment_account_project_yearly_growth():
-    account = InvestmentAccount(owner="Petr Ivanov", balance=0, currency="EUR")
+    account = InvestmentAccount(owner="Petr Ivanov", balance=1800, currency="EUR")
     account.allocated("stocks", 1000)
     account.allocated("bonds", 500)
     account.allocated("etf", 300)
