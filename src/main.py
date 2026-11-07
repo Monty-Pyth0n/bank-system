@@ -134,6 +134,21 @@ def main():
     except InsufficientFundsError as error:
         print(f"Withdrawal rejected: {error}")
 
+    try:
+        premium.deposit(1200000)
+        print("Deposit of 1 200 000 RUB successful.")
+        print(premium)
+    except InsufficientFundsError as error:
+        print(f"Deposit rejected: {error}")
+
+    try:
+        premium.withdraw(600000)
+        print("Withdrawal of 600 000 RUB successful.")
+        print(premium)
+    except InsufficientFundsError as error:
+        print(f"Withdrawal of 600 000 RUB rejected. {error}")   
+
+
     # Investment account
     investment = InvestmentAccount(
         owner="Petr Ivanov",
