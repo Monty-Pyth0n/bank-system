@@ -152,24 +152,28 @@ def main():
     # Investment account
     investment = InvestmentAccount(
         owner="Petr Ivanov",
-        balance=5000,
+        balance=0,
         currency="EUR"
     )
     print(investment)
     print(f"Account info: {investment.get_account_info()}\n")
 
-    investment.allocated("stocks", 1000)
-    investment.allocated("bonds", 500)
-    investment.allocated("etf", 300)
-    print("After portfolio allocation:")
-    print(investment)
-    print(f"Account info: {investment.get_account_info()}\n")
+    try:
+        investment.allocated("stocks", 1000)
+        investment.allocated("bonds", 500)
+        investment.allocated("etf", 300)
+        print("After portfolio allocation:")
+        print(investment)
+        print(f"Account info: {investment.get_account_info()}\n")
 
-    # Project yearly growth
-    growth = investment.project_yearly_growth(
-        {"stocks": 0.10, "bonds": 0.04, "etf": 0.07}
-    )
-    print(f"Projected yearly growth: {growth:.2f} {investment.currency}")
+        # Project yearly growth
+        growth = investment.project_yearly_growth(
+            {"stocks": 0.10, "bonds": 0.04, "etf": 0.07}
+        )
+        print(f"Projected yearly growth: {growth:.2f} {investment.currency}")
+        
+    except InsufficientFundsError as error:
+        print(f"Portfolio allocation rejected: {error}")
 
 if __name__ == "__main__":
     main()
