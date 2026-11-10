@@ -472,4 +472,88 @@ class InvestmentAccount(BankAccount):
         ]
 
         return build_account_table(rows)
-    
+
+
+# Client class
+class Client:
+    """Client class representing a bank client with personal information and accounts."""
+
+    def __init__(self, full_name, client_id, status, contact_details, age):
+        self._full_name = full_name.strip()
+        self._client_id = client_id.strip()
+        self._status = status.strip()
+        self._contact_details = contact_details
+        self._age = self._validate_age(age)
+        self._account_numbers = []
+
+    def _validate_age(self, age):
+        """Validate that the client is at least 18 years old."""
+        try:
+            age_value = int(age)
+        except (ValueError, TypeError):
+            raise InvalidOperationError("Age must be a valid integer.")
+
+        if age_value < 18:
+            raise InvalidOperationError("Client must be at least 18 years old.")
+
+        return age_value
+
+    def add_account(self, account):
+        """Add an account to the client's account list."""
+        if not hasattr(account, "account_number"):
+            raise InvalidOperationError("Invalid account object.")
+
+        self._account_numbers.append(account.account_number)
+        return self._account_numbers
+
+    def remove_account(self, account_number):
+        """Remove an account from the client's account list."""
+        if account_number not in self._account_numbers:
+            raise InvalidOperationError("Account number not found.")
+
+        self._account_numbers.remove(account_number)
+        return self._account_numbers
+
+    def get_account_info(self):
+        """Get comprehensive information about the client and their accounts."""
+        return {
+            "full_name": self._full_name,
+            "client_id": self._client_id,
+            "status": self._status,
+            "contact_details": self._contact_details,
+            "age": self._age,
+            "account_numbers": self._account_numbers.copy(),
+        }
+
+    #Encapsulation of attributes with property decorators
+    @property
+    def full_name(self):
+        return self._full_name
+
+    @property
+    def client_id(self):
+        return self._client_id
+
+    @property
+    def status(self):
+        return self._status
+
+    @property
+    def contact_details(self):
+        return self._contact_details
+
+    @property
+    def age(self):
+        return self._age
+
+    @property
+    def account_numbers(self):
+        return self._account_numbers.copy()
+
+    def __str__(self):
+        return (
+            f"ID: {self._client_id}, Client: {self._full_name}, "
+            f"Contact details: {self._contact_details}, Age: {self._age}, "
+            f"Status: {self._status}, "
+            f"Accounts: {', '.join(self._account_numbers) if self._account_numbers else 'None'}"
+        )
