@@ -6,6 +6,10 @@ from src.utils import generate_account_number
 from src.utils import build_account_table
 
 
+# ======================================
+# Day 1: Basic Banking Account Model
+# ======================================
+
 # Account status
 class AccountStatus(Enum):
     ACTIVE = "active"
@@ -215,6 +219,10 @@ class BankAccount(AbstractAccount):
         
         return build_account_table(rows)
 
+
+# ======================================
+# Day 2: Advanced Types of Bank Accounts
+# ======================================
 
 # Savings account
 class SavingsAccount(BankAccount):
@@ -474,17 +482,46 @@ class InvestmentAccount(BankAccount):
         return build_account_table(rows)
 
 
+# ======================================
+# Day 3: Bank System
+# ======================================
+
 # Client class
 class Client:
     """Client class representing a bank client with personal information and accounts."""
 
-    def __init__(self, full_name, client_id, status, contact_details, age):
-        self._full_name = full_name.strip()
+    def __init__(self, client_id, full_name, status, contact_details, age):
         self._client_id = client_id.strip()
+        self._full_name = full_name.strip()
         self._status = status.strip()
         self._contact_details = contact_details
         self._age = self._validate_age(age)
         self._account_numbers = []
+
+    # Encapsulation of attributes with property decorators
+    @property
+    def client_id(self):
+        return self._client_id
+    
+    @property
+    def full_name(self):
+        return self._full_name
+
+    @property
+    def status(self):
+        return self._status
+
+    @property
+    def contact_details(self):
+        return self._contact_details
+
+    @property
+    def age(self):
+        return self._age
+
+    @property
+    def account_numbers(self):
+        return self._account_numbers.copy()
 
     def _validate_age(self, age):
         """Validate that the client is at least 18 years old."""
@@ -525,31 +562,6 @@ class Client:
             "account_numbers": self._account_numbers.copy(),
         }
 
-    #Encapsulation of attributes with property decorators
-    @property
-    def full_name(self):
-        return self._full_name
-
-    @property
-    def client_id(self):
-        return self._client_id
-
-    @property
-    def status(self):
-        return self._status
-
-    @property
-    def contact_details(self):
-        return self._contact_details
-
-    @property
-    def age(self):
-        return self._age
-
-    @property
-    def account_numbers(self):
-        return self._account_numbers.copy()
-
     def __str__(self):
         return (
             f"ID: {self._client_id}, Client: {self._full_name}, "
@@ -557,3 +569,280 @@ class Client:
             f"Status: {self._status}, "
             f"Accounts: {', '.join(self._account_numbers) if self._account_numbers else 'None'}"
         )
+
+
+class Bank:
+    """Bank class managing clients and accounts."""
+
+    def __init__(self, name):
+        self._name = name.strip() if name else "Unnamed Bank"
+        self._clients = {}  # client_id -> Client
+        self._accounts = {}  # account_number -> Account 
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def clients(self):
+        return list(self._clients.values())
+
+    @property
+    def accounts(self):
+        return list(self._accounts.values())
+
+    def add_client(self, client_id, full_name, status, contact_details, age):
+        """
+        Add a new client to the bank.
+
+        Args:
+            client_id: Unique client identifier
+            full_name: Client's full name
+            status: Client status (e.g., 'active', 'inactive')
+            contact_details: Client's contact information
+            age: Client's age (must be >= 18)
+
+        Returns:
+            The created Client object
+
+        Raises:
+            InvalidOperationError: If client_id already exists or validation fails
+        """
+        client_id = client_id.strip()
+
+        if client_id in self._clients:
+            raise InvalidOperationError(f"Client with ID '{client_id}' already exists.")
+
+        client = Client(client_id, full_name, status, contact_details, age)
+        self._clients[client_id] = client
+        return client
+
+    def open_account(self, client_id, account_type="bank", **kwargs):
+        """
+        Open a new account for a client.
+
+        Args:
+            client_id: The client's ID
+            account_type: Type of account ('bank', 'savings', 'premium', 'investment')
+            **kwargs: Additional arguments for account creation (balance, currency, etc.)
+        
+        Returns:
+            The created account object
+
+        Raises:
+            InvalidOperationError: If client_id does not exist or account_type is invalid
+        """
+
+        client_id = client_id.strip()
+
+        if client_id not in self._clients:
+            raise InvalidOperationError(f"Client with ID '{client_id}' not found.")
+
+        client = self._clients[client_id]
+
+        #Map account types to class
+        account_classes = {
+            "bank": BankAccount,
+            "savings": SavingsAccount,
+            "premium": PremiumAccount,
+            "investment": InvestmentAccount
+        }
+
+        account_type_lower = account_type.lower()
+        if account_type_lower not in account_classes:
+            raise InvalidOperationError(
+                f"Invalid account type '{account_type}'. "
+                f"Valid types are: {', '.join(account_classes.keys())}"
+            )
+
+        AccountClass = account_classes[account_type_lower]
+
+        # Create the account
+        account = AccountClass(owner=client.full_name, **kwargs)
+
+        self._accounts[account.account_number] = account
+        client.add_account(account)
+
+        return account
+
+    def close_account(self, account_number):
+        """
+        Close an account
+
+        Args:
+            account_number: The account number to close
+        
+        Returns:
+            The closed account object
+
+        Raises:
+            InvalidOperationError: If account not found
+            AccountClosedError: If the account is already closed
+        """
+        account_number = account_number.strip()
+
+        if account_number not in self._accounts:
+            raise InvalidOperationError(f"Account with number '{account_number}' not found.")
+
+        account = self._accounts[account_number]
+        account.close()
+
+        # Remove from client's account list
+        # Find the client who owns this account
+        for client in self._clients.values():
+            if account_number in client.account_numbers:
+                client.remove_account(account_number)
+                break
+
+        return account
+    
+    def freeze_account(self, account_number):
+        """
+        Freeze an account.
+
+        Args:
+            account_number: The account number to freeze
+
+        Raises:
+            InvalidOperationError: If account not found
+            AccountFrozenError: If the account is already frozen
+        """
+        account_number = account_number.strip()
+
+        if account_number not in self._accounts:
+            raise InvalidOperationError(f"Account '{account_number}' not found.")
+
+        account = self._accounts[account_number]
+        account.freeze()
+
+        return account
+
+    def unfreeze_account(self, account_number):
+        """
+        Unfreeze (activate) an account.
+
+        Args:
+            account_number: The account number to unfreeze
+        
+        Returns:
+            The activated account object
+
+        Raises:
+            InvalidOperationError: If account not found
+            AccountClosedError: If account is closed
+        """
+        account_number = account_number.strip()
+
+        if account_number not in self._accounts:
+            raise InvalidOperationError(f"Account '{account_number}' not found.")
+
+        account = self._accounts[account_number]
+        account.activate()
+
+        return account
+
+    def authenticate_client(self, client_id, contact_details):
+        """
+        Authenticate a client.
+
+        Args:
+            client_id: The client's ID
+            contact_details: Optional contact details for verification
+
+        Returns:
+            The authenticated Client object
+
+        Raises:
+            InvalidOperationError: If client not found or authentication fails 
+        """
+        client_id = client_id.strip()
+
+        if client_id not in self._clients:
+            raise InvalidOperationError(f"Client with ID '{client_id}' not found.")
+
+        client = self._clients[client_id]
+        if contact_details and client.contact_details != contact_details:
+            raise InvalidOperationError(
+                "Authentication failed: contact details do not match."
+            )
+
+        if client.status.lower() != "active":
+            raise InvalidOperationError(f"Client '{client_id}' is not active.")
+
+        return client
+
+    def search_accounts(self, **criteria):
+        """
+        Search for accounts matching the given criteria.
+
+        Args:
+            **criteria: Search criteria (owner, currency, status, account_type, min_balance, max_balance)
+
+        Returns:
+            List of matching Account objects
+        """
+
+        results = []
+
+        for account in self._accounts.values():
+            match = True
+
+            # Check owner
+            if ("owner" in criteria) and (
+                criteria["owner"].lower() not in account.owner.lower()
+            ):
+                match = False
+
+            # Check currency
+            if ("currency" in criteria) and match and (
+                criteria["currency"].upper() != account.currency
+            ):
+                match = False
+
+            # Check status
+            if ("status" in criteria) and match:
+                if isinstance(criteria["status"], AccountStatus):
+                    status_value = criteria["status"].value
+                else:
+                    status_value = str(criteria["status"]).upper()
+                if account.status.value != status_value:
+                    match = False
+
+            # Check account type
+            if ("account_type" in criteria) and match and (
+                criteria["account_type"].lower() != type(account).__name__.lower()
+            ):
+                match = False
+
+            # Check minimum balance
+            if ("min_balance" in criteria) and match and (
+                account.balance < criteria["min_balance"]                           
+            ):
+                match = False
+
+            # Check maximum balance
+            if ("max_balance" in criteria) and match and (
+                account.balance > criteria["max_balance"]
+            ):
+                match = False
+
+            if match:
+                results.append(account)
+
+            return results
+
+    def get_clients(self, client_id):
+        """Get a client by ID."""
+        client_id = client_id.strip()
+        return self._clients.get(client_id)
+
+    def get_account(self, account_number):
+        """Get an account by number."""
+        account_number = account_number.strip()
+        return self._accounts.get(account_number)
+
+    def __str__(self):
+        return f"Bank: {self._name}, Clients: {len(self._clients)}, Accounts: {len(self._accounts)}"
+
+
+           
