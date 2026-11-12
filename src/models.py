@@ -1,9 +1,15 @@
 from abc import ABC, abstractmethod  # noqa: I001
 from decimal import Decimal, InvalidOperation
+from datetime import datetime, time
 from enum import Enum
+import logging
 
 from src.utils import generate_account_number
 from src.utils import build_account_table
+
+# Configure logging for suspicious activity
+logging.basicConfig(level=logging.WARNING)
+security_logger = logging.getLogger("bank.security")
 
 
 # ======================================
@@ -34,8 +40,25 @@ class InsufficientFundsError(Exception):
     """Raised when the account has insufficient funds."""
 
 
+class AccountLockedError(Exception):
+    """Raised when an account is locked due to too many failed login attempts."""
+
+
+class TransactionProhibitedError(Exception):
+    """Raised when a transaction is attempted during prohibited hours (00:00-05:00)."""
+
+
+class SuspiciousActivityError(Exception):
+    """Raised when suspicious activity is detected."""
+
+
 # Abstract account
 class AbstractAccount(ABC):
+
+    # Security constants
+    MAX_FAILED_ATTEMPTS = 3
+    PROHIBITED_HOURS_START = 0  # 00:00
+    PROHIBITED_HOURS_END = 5    # 05:00
 
     def __init__(self, owner, balance=0, account_number=None):
         if not isinstance(owner, str) or not owner.strip():
@@ -53,6 +76,11 @@ class AbstractAccount(ABC):
             raise InvalidOperationError("Account number cannot be empty.")
 
         self._status = AccountStatus.ACTIVE
+        
+        # Security features
+        self._failed_login_attempts = 0
+        self._is_locked = False
+        self._last_failed_attempt_time = None
 
     @staticmethod
     def _validate_amount(amount):
@@ -73,6 +101,80 @@ class AbstractAccount(ABC):
 
         return value
 
+    def _check_prohibited_hours(self):
+        """Check if current time is within prohibited hours (00:00-05:00)."""
+        current_hour = datetime.now().hour
+        if self.PROHIBITED_HOURS_START <= current_hour < self.PROHIBITED_HOURS_END:
+            security_logger.warning(
+                f"SUSPICIOUS ACTIVITY: Transaction attempted during prohibited hours "
+                f"({self.PROHIBITED_HOURS_START}:00-{self.PROHIBITED_HOURS_END}:00) "
+                f"on account {self._account_number} by {self._owner}"
+            )
+            raise TransactionProhibitedError(
+                f"Transactions are prohibited between {self.PROHIBITED_HOURS_START}:00 "
+                f"and {self.PROHIBITED_HOURS_END}:00"
+            )
+
+    def _check_locked(self):
+        """Check if account is locked due to failed login attempts."""
+        if self._is_locked:
+            security_logger.warning(
+                f"SUSPICIOUS ACTIVITY: Operation attempted on locked account "
+                f"{self._account_number} by {self._owner}"
+            )
+            raise AccountLockedError(
+                f"Account {self._account_number} is locked due to "
+                f"{self.MAX_FAILED_ATTEMPTS} failed login attempts. "
+                f"Please contact bank support to unlock."
+            )
+
+    def _record_failed_login(self):
+        """Record a failed login attempt and lock account if threshold reached."""
+        self._failed_login_attempts += 1
+        self._last_failed_attempt_time = datetime.now()
+        
+        security_logger.warning(
+            f"Failed login attempt #{self._failed_login_attempts} "
+            f"on account {self._account_number} by {self._owner}"
+        )
+        
+        if self._failed_login_attempts >= self.MAX_FAILED_ATTEMPTS:
+            self._is_locked = True
+            security_logger.error(
+                f"ACCOUNT LOCKED: Account {self._account_number} locked after "
+                f"{self.MAX_FAILED_ATTEMPTS} failed login attempts by {self._owner}"
+            )
+            raise AccountLockedError(
+                f"Account locked after {self.MAX_FAILED_ATTEMPTS} failed login attempts. "
+                f"Please contact bank support to unlock."
+            )
+
+    def _reset_failed_attempts(self):
+        """Reset failed login attempts counter on successful login."""
+        if self._failed_login_attempts > 0:
+            security_logger.info(
+                f"Failed login attempts reset for account {self._account_number} "
+                f"after successful authentication by {self._owner}"
+            )
+        self._failed_login_attempts = 0
+        self._last_failed_attempt_time = None
+
+    def _check_suspicious_activity(self, amount, operation_type):
+        """Check for suspicious activity patterns."""
+        # Large transactions at unusual hours (even if not in prohibited hours)
+        current_hour = datetime.now().hour
+        large_amount_threshold = Decimal("100000")
+        
+        if amount > large_amount_threshold and (current_hour < 6 or current_hour > 22):
+            security_logger.warning(
+                f"SUSPICIOUS ACTIVITY: Large {operation_type} of {amount} "
+                f"at unusual hour ({current_hour}:00) on account {self._account_number} "
+                f"by {self._owner}"
+            )
+        
+        # Multiple rapid transactions (could be enhanced with timestamp tracking)
+        # This is a basic implementation - could be extended with transaction history
+
     @abstractmethod
     def deposit(self, amount):
         pass
@@ -84,6 +186,68 @@ class AbstractAccount(ABC):
     @abstractmethod
     def get_account_info(self):
         pass
+
+    # Security-related methods
+    def authenticate(self, credentials=None):
+        """
+        Authenticate the account holder.
+        
+        Args:
+            credentials: Optional credentials for verification
+            
+        Returns:
+            True if authentication successful
+            
+        Raises:
+            AccountLockedError: If account is locked
+            InvalidOperationError: If authentication fails
+        """
+        self._check_locked()
+        
+        # In a real system, this would verify credentials against a secure store
+        # For now, we simulate authentication success/failure
+        if credentials is None:
+            # Simulate failed authentication for demo purposes
+            self._record_failed_login()
+            raise InvalidOperationError("Authentication failed: invalid credentials")
+        
+        # Successful authentication
+        self._reset_failed_attempts()
+        return True
+
+    def unlock_account(self, admin_override=False):
+        """
+        Unlock a locked account (admin operation).
+        
+        Args:
+            admin_override: Must be True for admin unlock
+            
+        Raises:
+            InvalidOperationError: If not authorized or account not locked
+        """
+        if not admin_override:
+            raise InvalidOperationError("Account unlock requires admin authorization")
+        
+        if not self._is_locked:
+            raise InvalidOperationError("Account is not locked")
+        
+        self._is_locked = False
+        self._failed_login_attempts = 0
+        self._last_failed_attempt_time = None
+        
+        security_logger.info(
+            f"Account {self._account_number} unlocked by admin for {self._owner}"
+        )
+
+    @property
+    def is_locked(self):
+        """Check if account is locked."""
+        return self._is_locked
+
+    @property
+    def failed_login_attempts(self):
+        """Get number of failed login attempts."""
+        return self._failed_login_attempts
 
 
 # Bank account
