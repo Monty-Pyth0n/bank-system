@@ -1070,10 +1070,18 @@ class Bank:
         return {
             "client_id": client._client_id,
             "full_name": client._full_name,
-            "status": client._status.value,  
+            "status": client._status.value,
             "is_locked": client._is_locked,
             "failed_login_attempts": client._failed_login_attempts,
             "max_failed_attempts": client.MAX_FAILED_ATTEMPTS,
             "is_suspicious": client._is_suspicious,
             "suspicious_activity": client._suspicious_activity,
         }
+
+    def get_total_balance(self):
+        """Calculate the total balance across all accounts in the bank."""
+        total = Decimal("0.00")
+        for account in self._accounts.values():
+            total += account.balance
+        return total
+
