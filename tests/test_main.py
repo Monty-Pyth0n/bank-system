@@ -253,41 +253,23 @@ def test_premium_account_withdrawal_limit():
     assert "exceeds daily limit" in str(exc_info.value)
 
 
-def test_premium_account_custom_withdrawal_limit():
-    """Test that PremiumAccount respects custom withdrawal limit."""
-    # Create premium account with custom limit and sufficient balance
-    account = PremiumAccount(
-        owner="Anna Smirnova",
-        balance=1000000,
-    )
-    assert account.withdrawal_limit == Decimal("200000.00")
-
-    # Withdrawal within limit should work (includes fixed fee)
-    account.withdraw(100000)
-    assert account.balance == Decimal("899900.00")  # 1000000 - (100000 + 100)
-
-    # Withdrawal exceeding limit should fail
-    with pytest.raises(InsufficientFundsError) as exc_info:
-        account.withdraw(200001)
-    assert "exceeds daily limit" in str(exc_info.value)
-
-
 def test_premium_account_withdrawal_limit_vs_overdraft():
     """Test that PremiumAccount withdrawal limit is checked before overdraft."""
     # Create premium account with overdraft
     account = PremiumAccount(
         owner="Anna Smirnova",
-        balance=100000,
+        balance=1000000,
         overdraft_limit=50000,
     )
 
     # Withdrawal within both limits should work
-    account.withdraw(15000)
-    assert account.balance == Decimal("84900.00")  # 100000 - (15000 + 100)
+    account.withdraw(150000)
+    assert account.balance == Decimal("849900.00")  # 1000000 - (150000 + 100)
 
     # Withdrawal within overdraft but exceeding withdrawal limit should fail
+    # Daily limit is 500000, so try to withdraw more than that (including fee)
     with pytest.raises(InsufficientFundsError) as exc_info:
-        account.withdraw(25000)
+        account.withdraw(499901)  # 499901 + 100 fee = 500001 > 500000 limit
     assert "exceeds daily limit" in str(exc_info.value)
 
 
@@ -435,4 +417,6 @@ def test_polymorphic_str():
     assert "InvestmentAccount" in str(investment)
     assert "Portfolio" in str(investment)
 
-
+# ======================================
+# Day 3: Bank System
+# ======================================

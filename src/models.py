@@ -410,16 +410,17 @@ class PremiumAccount(BankAccount):
             raise InvalidOperationError("Withdrawal amount must be greater than zero.")
         
         total_with_fee = amount + self.fixed_fee
+        
+        if total_with_fee > self.withdrawal_limit:
+            raise InsufficientFundsError(
+                f"Withdrawal amount exceeds daily limit of {self.withdrawal_limit}"
+            )
+        
         available = self._balance + self.overdraft_limit
 
         if total_with_fee > available:
             raise InsufficientFundsError(
                 f"Insufficient funds. Available with overdraft: {available}"
-            )
-
-        if total_with_fee > self.withdrawal_limit:
-            raise InsufficientFundsError(
-                f"Withdrawal amount exceeds daily limit of {self.withdrawal_limit}"
             )
 
         # Security checks
