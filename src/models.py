@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod  # noqa: I001
 from decimal import Decimal, InvalidOperation
-from datetime import datetime, time
+from datetime import datetime
 from enum import Enum
 import logging
 
@@ -46,10 +46,6 @@ class ClientLockedError(Exception):
 
 class TransactionProhibitedError(Exception):
     """Raised when a transaction is attempted during prohibited hours (00:00-05:00)."""
-
-
-class SuspiciousActivityError(Exception):
-    """Raised when suspicious activity is detected."""
 
 
 # Abstract account
