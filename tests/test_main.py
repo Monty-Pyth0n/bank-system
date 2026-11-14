@@ -259,7 +259,6 @@ def test_premium_account_custom_withdrawal_limit():
     account = PremiumAccount(
         owner="Anna Smirnova",
         balance=1000000,
-        withdrawal_limit=200000
     )
     assert account.withdrawal_limit == Decimal("200000.00")
 
@@ -280,7 +279,6 @@ def test_premium_account_withdrawal_limit_vs_overdraft():
         owner="Anna Smirnova",
         balance=100000,
         overdraft_limit=50000,
-        withdrawal_limit=20000
     )
 
     # Withdrawal within both limits should work
@@ -313,9 +311,9 @@ def test_investment_account_creation():
 
 def test_investment_account_allocate():
     account = InvestmentAccount(owner="Petr Ivanov", balance=10000, currency="EUR")
-    account.allocated("stocks", 1000)
-    account.allocated("bonds", 500)
-    account.allocated("etf", 300)
+    account.allocate("stocks", 1000)
+    account.allocate("bonds", 500)
+    account.allocate("etf", 300)
     assert account.balance == Decimal("8200.00")
     assert account.portfolio["stocks"] == Decimal("1000.00")
     assert account.portfolio["bonds"] == Decimal("500.00")
@@ -325,20 +323,20 @@ def test_investment_account_allocate():
 def test_investment_account_allocate_unsupported_asset():
     account = InvestmentAccount(owner="Petr Ivanov", balance=10000, currency="EUR")
     with pytest.raises(InvalidOperationError):
-        account.allocated("real_estate", 100)
+        account.allocate("real_estate", 100)
 
 
 def test_investment_account_allocate_insufficient_funds():
     account = InvestmentAccount(owner="Petr Ivanov", balance=0, currency="EUR")
     with pytest.raises(InsufficientFundsError):
-        account.allocated("stocks", 500)
+        account.allocate("stocks", 500)
 
 
 def test_investment_account_project_yearly_growth():
     account = InvestmentAccount(owner="Petr Ivanov", balance=1800, currency="EUR")
-    account.allocated("stocks", 1000)
-    account.allocated("bonds", 500)
-    account.allocated("etf", 300)
+    account.allocate("stocks", 1000)
+    account.allocate("bonds", 500)
+    account.allocate("etf", 300)
     growth = account.project_yearly_growth({"stocks": 0.10, "bonds": 0.04, "etf": 0.07})
     expected_growth = Decimal("141.00")  # 1000*0.10 + 500*0.04 + 300*0.07
     assert growth == expected_growth
@@ -378,7 +376,7 @@ def test_investment_account_withdrawal_limit():
 
 def test_investment_account_get_account_info():
     account = InvestmentAccount(owner="Petr Ivanov", balance=5000, currency="EUR")
-    account.allocated("stocks", 1000)
+    account.allocate("stocks", 1000)
     info = account.get_account_info()
     assert info["portfolio_value"] == Decimal("1000.00")
     assert info["total_value"] == Decimal("5000.00")
@@ -386,7 +384,7 @@ def test_investment_account_get_account_info():
 
 def test_investment_account_str():
     account = InvestmentAccount(owner="Petr Ivanov", balance=5000, currency="EUR")
-    account.allocated("stocks", 1000)
+    account.allocate("stocks", 1000)
     str_repr = str(account)
     assert "InvestmentAccount" in str_repr
     assert "5000.00" in str_repr
@@ -437,4 +435,4 @@ def test_polymorphic_str():
     assert "InvestmentAccount" in str(investment)
     assert "Portfolio" in str(investment)
 
-    
+
