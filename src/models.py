@@ -1085,3 +1085,18 @@ class Bank:
             total += account.balance
         return total
 
+    def get_clients_ranking(self):
+        """Rank clients by their total account balance (descending)."""
+        client_balances = []
+        for client in self._clients.values():
+            total_balance = Decimal("0.00")
+            for account_number in client.account_numbers:
+                account = self._accounts.get(account_number)
+                if account:
+                    total_balance += account.balance
+            client_balances.append((client, total_balance))
+        
+        # Sort by balance descending
+        client_balances.sort(key=lambda x: x[1], reverse=True)
+        return client_balances
+
