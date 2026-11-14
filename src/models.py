@@ -40,7 +40,7 @@ class InsufficientFundsError(Exception):
     """Raised when the account has insufficient funds."""
 
 
-class AccountLockedError(Exception):
+class ClientLockedError(Exception):
     """Raised when an account is locked due to too many failed login attempts."""
 
 
@@ -54,11 +54,6 @@ class SuspiciousActivityError(Exception):
 
 # Abstract account
 class AbstractAccount(ABC):
-
-    # Security constants
-    MAX_FAILED_ATTEMPTS = 3
-    PROHIBITED_HOURS_START = 0  # 00:00
-    PROHIBITED_HOURS_END = 5    # 05:00
 
     def __init__(self, owner, balance=0, account_number=None):
         if not isinstance(owner, str) or not owner.strip():
@@ -74,13 +69,6 @@ class AbstractAccount(ABC):
 
         if not self._account_number:
             raise InvalidOperationError("Account number cannot be empty.")
-
-        self._status = AccountStatus.ACTIVE
-        
-        # Security features
-        self._failed_login_attempts = 0
-        self._is_locked = False
-        self._last_failed_attempt_time = None
 
     @staticmethod
     def _validate_amount(amount):
@@ -101,80 +89,6 @@ class AbstractAccount(ABC):
 
         return value
 
-    def _check_prohibited_hours(self):
-        """Check if current time is within prohibited hours (00:00-05:00)."""
-        current_hour = datetime.now().hour
-        if self.PROHIBITED_HOURS_START <= current_hour < self.PROHIBITED_HOURS_END:
-            security_logger.warning(
-                f"SUSPICIOUS ACTIVITY: Transaction attempted during prohibited hours "
-                f"({self.PROHIBITED_HOURS_START}:00-{self.PROHIBITED_HOURS_END}:00) "
-                f"on account {self._account_number} by {self._owner}"
-            )
-            raise TransactionProhibitedError(
-                f"Transactions are prohibited between {self.PROHIBITED_HOURS_START}:00 "
-                f"and {self.PROHIBITED_HOURS_END}:00"
-            )
-
-    def _check_locked(self):
-        """Check if account is locked due to failed login attempts."""
-        if self._is_locked:
-            security_logger.warning(
-                f"SUSPICIOUS ACTIVITY: Operation attempted on locked account "
-                f"{self._account_number} by {self._owner}"
-            )
-            raise AccountLockedError(
-                f"Account {self._account_number} is locked due to "
-                f"{self.MAX_FAILED_ATTEMPTS} failed login attempts. "
-                f"Please contact bank support to unlock."
-            )
-
-    def _record_failed_login(self):
-        """Record a failed login attempt and lock account if threshold reached."""
-        self._failed_login_attempts += 1
-        self._last_failed_attempt_time = datetime.now()
-        
-        security_logger.warning(
-            f"Failed login attempt #{self._failed_login_attempts} "
-            f"on account {self._account_number} by {self._owner}"
-        )
-        
-        if self._failed_login_attempts >= self.MAX_FAILED_ATTEMPTS:
-            self._is_locked = True
-            security_logger.error(
-                f"ACCOUNT LOCKED: Account {self._account_number} locked after "
-                f"{self.MAX_FAILED_ATTEMPTS} failed login attempts by {self._owner}"
-            )
-            raise AccountLockedError(
-                f"Account locked after {self.MAX_FAILED_ATTEMPTS} failed login attempts. "
-                f"Please contact bank support to unlock."
-            )
-
-    def _reset_failed_attempts(self):
-        """Reset failed login attempts counter on successful login."""
-        if self._failed_login_attempts > 0:
-            security_logger.info(
-                f"Failed login attempts reset for account {self._account_number} "
-                f"after successful authentication by {self._owner}"
-            )
-        self._failed_login_attempts = 0
-        self._last_failed_attempt_time = None
-
-    def _check_suspicious_activity(self, amount, operation_type):
-        """Check for suspicious activity patterns."""
-        # Large transactions at unusual hours (even if not in prohibited hours)
-        current_hour = datetime.now().hour
-        large_amount_threshold = Decimal("100000")
-        
-        if amount > large_amount_threshold and (current_hour < 6 or current_hour > 22):
-            security_logger.warning(
-                f"SUSPICIOUS ACTIVITY: Large {operation_type} of {amount} "
-                f"at unusual hour ({current_hour}:00) on account {self._account_number} "
-                f"by {self._owner}"
-            )
-        
-        # Multiple rapid transactions (could be enhanced with timestamp tracking)
-        # This is a basic implementation - could be extended with transaction history
-
     @abstractmethod
     def deposit(self, amount):
         pass
@@ -187,74 +101,15 @@ class AbstractAccount(ABC):
     def get_account_info(self):
         pass
 
-    # Security-related methods
-    def authenticate(self, credentials=None):
-        """
-        Authenticate the account holder.
-        
-        Args:
-            credentials: Optional credentials for verification
-            
-        Returns:
-            True if authentication successful
-            
-        Raises:
-            AccountLockedError: If account is locked
-            InvalidOperationError: If authentication fails
-        """
-        self._check_locked()
-        
-        # In a real system, this would verify credentials against a secure store
-        # For now, we simulate authentication success/failure
-        if credentials is None:
-            # Simulate failed authentication for demo purposes
-            self._record_failed_login()
-            raise InvalidOperationError("Authentication failed: invalid credentials")
-        
-        # Successful authentication
-        self._reset_failed_attempts()
-        return True
-
-    def unlock_account(self, admin_override=False):
-        """
-        Unlock a locked account (admin operation).
-        
-        Args:
-            admin_override: Must be True for admin unlock
-            
-        Raises:
-            InvalidOperationError: If not authorized or account not locked
-        """
-        if not admin_override:
-            raise InvalidOperationError("Account unlock requires admin authorization")
-        
-        if not self._is_locked:
-            raise InvalidOperationError("Account is not locked")
-        
-        self._is_locked = False
-        self._failed_login_attempts = 0
-        self._last_failed_attempt_time = None
-        
-        security_logger.info(
-            f"Account {self._account_number} unlocked by admin for {self._owner}"
-        )
-
-    @property
-    def is_locked(self):
-        """Check if account is locked."""
-        return self._is_locked
-
-    @property
-    def failed_login_attempts(self):
-        """Get number of failed login attempts."""
-        return self._failed_login_attempts
-
 
 # Bank account
 class BankAccount(AbstractAccount):
 
     ALLOWED_CURRENCIES = {"RUB", "USD", "EUR", "KZT", "CNY"}  # noqa: RUF012
     DEFAULT_WITHDRAWAL_LIMIT = Decimal("100000.00")  # Default daily withdrawal limit
+
+    PROHIBITED_HOURS_START = 0  # 00:00
+    PROHIBITED_HOURS_END = 5  # 05:00
 
     def __init__(
         self,
@@ -263,7 +118,8 @@ class BankAccount(AbstractAccount):
         account_number=None,
         currency="RUB",
         status=AccountStatus.ACTIVE,
-        withdrawal_limit=None
+        withdrawal_limit=None,
+        client=None,  # linking BankAccount and Client objects
     ):
         super().__init__(owner, balance, account_number)
 
@@ -283,7 +139,10 @@ class BankAccount(AbstractAccount):
 
         self.currency = currency
         self._status = status
-        self.withdrawal_limit = self._validate_amount(withdrawal_limit) if withdrawal_limit is not None else self.DEFAULT_WITHDRAWAL_LIMIT
+        self._client = client
+        self.withdrawal_limit = self._validate_amount(
+            withdrawal_limit
+            ) if withdrawal_limit is not None else self.DEFAULT_WITHDRAWAL_LIMIT
 
 
     @property
@@ -310,18 +169,62 @@ class BankAccount(AbstractAccount):
         if self._status == AccountStatus.CLOSED:
             raise AccountClosedError("The account is closed.")
 
+    def _check_prohibited_hours(self):
+        """Check if current time is within prohibited hours (00:00-05:00)."""
+        current_hour = datetime.now().hour
+        if self.PROHIBITED_HOURS_START <= current_hour < self.PROHIBITED_HOURS_END:
+            security_logger.warning(
+                f"SUSPICIOUS ACTIVITY: Transaction attempted during prohibited hours "
+                f"({self.PROHIBITED_HOURS_START}:00-{self.PROHIBITED_HOURS_END}:00) "
+                f"on account {self._account_number} by {self._owner}"
+            )
+            raise TransactionProhibitedError(
+                f"Transactions are prohibited between {self.PROHIBITED_HOURS_START}:00 "
+                f"and {self.PROHIBITED_HOURS_END}:00"
+            )
+    
+    def _check_suspicious_activity(self, amount, operation_type):
+        """Check for suspicious activity patterns."""
+        # Large transactions at unusual hours (even if not in prohibited hours)
+        current_hour = datetime.now().hour
+        large_amount_threshold = Decimal("100000.00")
+        
+        if amount > large_amount_threshold and (
+            current_hour < 6 or current_hour > 22
+            ):
+
+            reason = (
+                f"Large {operation_type} of {amount} "
+                f"at unusual hour ({current_hour}:00) "
+                f"on account {self._account_number}"
+            )
+
+            security_logger.warning(
+                f"SUSPICIOUS ACTIVITY: {reason}"
+                )
+
+            # Notify the suspicious client
+            if self._client is not None:
+                self._client.flag_suspicious_activity(reason)
+
     def deposit(self, amount):
         self._check_status()
+
         amount = self._validate_amount(amount)
 
         if amount == 0:
             raise InvalidOperationError("Deposit amount must be greater than zero.")
+
+        # Security checks
+        self._check_prohibited_hours()
+        self._check_suspicious_activity(amount, "deposit")
 
         self._balance += amount
         return self._balance
 
     def withdraw(self, amount):
         self._check_status()
+        
         amount = self._validate_amount(amount)
 
         if amount == 0:
@@ -336,6 +239,10 @@ class BankAccount(AbstractAccount):
             raise InsufficientFundsError(
                 f"Withdrawal amount exceeds daily limit of {self.withdrawal_limit}"
             )
+
+        # Security checks
+        self._check_prohibited_hours()
+        self._check_suspicious_activity(amount, "withdrawal")
 
         self._balance -= amount
         return self._balance
@@ -402,17 +309,23 @@ class SavingsAccount(BankAccount):
         min_balance=0,
         interest_rate=0.01,
         withdrawal_limit=None,
+        client=None,
     ):
-        super().__init__(owner, balance, account_number, currency, status, withdrawal_limit)
-        self.min_balance = self._validate_amount(min_balance)
+        super().__init__(
+            owner, 
+            balance, 
+            account_number, 
+            currency, 
+            status, 
+            withdrawal_limit, 
+            client=client,
+        )
+        
+        self.min_balance = min_balance
         self.interest_rate = interest_rate
 
     def withdraw(self, amount):
-        self._check_status()
         amount = self._validate_amount(amount)
-
-        if amount == 0:
-            raise InvalidOperationError("Withdrawal amount must be greater than zero.")
 
         if self._balance - amount < self.min_balance:
             raise InsufficientFundsError(
@@ -420,17 +333,13 @@ class SavingsAccount(BankAccount):
                 f"Available: {self._balance - self.min_balance}"
             )
 
-        if amount > self.withdrawal_limit:
-            raise InsufficientFundsError(
-                f"Withdrawal amount exceeds daily limit of {self.withdrawal_limit}"
-            )
-
-        self._balance -= amount
-        return self._balance
+        return super().withdraw(amount)
 
     def apply_monthly_interest(self):
         """Apply monthly interest to the account balance."""
+        # Security checks
         self._check_status()
+        
         interest = self._balance * Decimal(str(self.interest_rate))
         self._balance += interest
         return self._balance
@@ -478,9 +387,18 @@ class PremiumAccount(BankAccount):
         status=AccountStatus.ACTIVE,
         overdraft_limit=50000,
         fixed_fee=100,
-        withdrawal_limit=None
+        withdrawal_limit=DEFAULT_WITHDRAWAL_LIMIT,
+        client = None,
     ):
-        super().__init__(owner, balance, account_number, currency, status, withdrawal_limit)
+        super().__init__(
+            owner, 
+            balance, 
+            account_number, 
+            currency, 
+            status, 
+            withdrawal_limit,
+            client=client
+            )
         self.overdraft_limit = self._validate_amount(overdraft_limit)
         self.fixed_fee = self._validate_amount(fixed_fee)
 
@@ -490,7 +408,7 @@ class PremiumAccount(BankAccount):
 
         if amount == 0:
             raise InvalidOperationError("Withdrawal amount must be greater than zero.")
-
+        
         total_with_fee = amount + self.fixed_fee
         available = self._balance + self.overdraft_limit
 
@@ -503,6 +421,10 @@ class PremiumAccount(BankAccount):
             raise InsufficientFundsError(
                 f"Withdrawal amount exceeds daily limit of {self.withdrawal_limit}"
             )
+
+        # Security checks
+        self._check_prohibited_hours()
+        self._check_suspicious_activity(amount, "withdrawal")
 
         self._balance -= total_with_fee
         return self._balance
@@ -549,33 +471,23 @@ class InvestmentAccount(BankAccount):
         currency="RUB",
         status=AccountStatus.ACTIVE,
         withdrawal_limit=None,
+        client=None,
     ):
-        super().__init__(owner, balance, account_number, currency, status, withdrawal_limit)
+        super().__init__(
+            owner, 
+            balance, 
+            account_number, 
+            currency, 
+            status, 
+            withdrawal_limit,
+            client=client
+            )
         self.portfolio = {asset: Decimal(0) for asset in self.SUPPORTED_ASSET_TYPES}
 
-    def withdraw(self, amount):
-        self._check_status()
-        amount = self._validate_amount(amount)
-
-        if amount == 0:
-            raise InvalidOperationError("Withdrawal amount must be greater than zero.")
-
-        if amount > self._balance:
-            raise InsufficientFundsError(
-                "Insufficient funds to complete the withdrawal."
-            )
-
-        if amount > self.withdrawal_limit:
-            raise InsufficientFundsError(
-                f"Withdrawal amount exceeds daily limit of {self.withdrawal_limit}"
-            )
-
-        self._balance -= amount
-        return self._balance
-
-    def allocated(self, asset_type, amount):
+    def allocate(self, asset_type, amount):
         """Allocate funds to a specific asset type in the investment portfolio."""
         self._check_status()
+                
         amount = self._validate_amount(amount)
 
         if asset_type not in self.SUPPORTED_ASSET_TYPES:
@@ -592,13 +504,16 @@ class InvestmentAccount(BankAccount):
                 "Insufficient funds to allocation"
             )
 
+        # Security checks
+        self._check_prohibited_hours()
+        self._check_suspicious_activity(amount, "allocation")
+
         self._balance -= amount
         self.portfolio[asset_type] += amount
         return self.portfolio[asset_type]
 
     def project_yearly_growth(self, growth_rates):
         """Calculate expected annual growth based on the growth rates per asset type."""
-        self._check_status()
 
         for asset_type in growth_rates:
             if asset_type not in self.SUPPORTED_ASSET_TYPES:
@@ -650,17 +565,34 @@ class InvestmentAccount(BankAccount):
 # Day 3: Bank System
 # ======================================
 
+# Client Status 
+class ClientStatus(Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+    
 # Client class
 class Client:
     """Client class representing a bank client with personal information and accounts."""
 
-    def __init__(self, client_id, full_name, status, contact_details, age):
+    # Security constants
+    MAX_FAILED_ATTEMPTS = 3
+
+    def __init__(self, client_id, full_name, contact_details, age, status=ClientStatus.ACTIVE):
         self._client_id = client_id.strip()
         self._full_name = full_name.strip()
-        self._status = status.strip()
+        self._status = status
         self._contact_details = contact_details
         self._age = self._validate_age(age)
         self._account_numbers = []
+
+        # Security features
+        self._failed_login_attempts = 0
+        self._last_failed_attempt_time = None 
+        self._is_locked = False
+        self._is_suspicious = False
+        self._suspicious_activity = None
+        
 
     # Encapsulation of attributes with property decorators
     @property
@@ -686,6 +618,26 @@ class Client:
     @property
     def account_numbers(self):
         return self._account_numbers.copy()
+
+    # Security properties
+    @property
+    def is_locked(self):
+        """Check if client is locked."""
+        return self._is_locked
+
+    @property
+    def is_suspicious(self):
+        """Check if client is suspicious."""
+        return self._is_suspicious
+
+    @property
+    def failed_login_attempts(self):
+        """Get number of failed login attempts."""
+        return self._failed_login_attempts
+
+    @property
+    def suspicious_activity(self):
+        return self._suspicious_activity
 
     def _validate_age(self, age):
         """Validate that the client is at least 18 years old."""
@@ -730,10 +682,85 @@ class Client:
         return (
             f"ID: {self._client_id}, Client: {self._full_name}, "
             f"Contact details: {self._contact_details}, Age: {self._age}, "
-            f"Status: {self._status}, "
+            f"Status: {self._status.value}, "
             f"Accounts: {', '.join(self._account_numbers) if self._account_numbers else 'None'}"
         )
 
+    # Security methods
+    def _lock(self):
+        """Lock a client."""
+
+        if self._is_locked:
+            raise ClientLockedError(
+                "Client is already locked."
+                )
+        self._is_locked = True
+        
+    def _unlock(self):
+        """Unlock a client."""
+
+        if not self._is_locked:
+            raise ClientLockedError("Client is already unlocked.")
+        
+        self._is_locked = False
+        security_logger.info(
+            f"CLIENT UNLOCKED: Client {self._client_id} - {self._full_name} unlocked"
+            )
+        self.reset_failed_attempts()
+
+    def flag_suspicious_activity(self, reason: str):
+        """Mark client as suspicious."""
+
+        self._is_suspicious = True
+        self._suspicious_activity = reason
+
+        security_logger.warning(
+            f"Suspicious activity flagged for client "
+            f"{self._client_id} - {self._full_name}: {reason}"
+        )
+
+    def record_failed_login(self):
+        """Record a failed login attempt and lock account if threshold reached."""
+        self._failed_login_attempts += 1
+        self._last_failed_attempt_time = datetime.now()
+
+        security_logger.warning(
+            f"Failed login attempt #{self._failed_login_attempts} "
+            f"by client {self._client_id} - {self._full_name}"
+        )
+
+        if self._failed_login_attempts >= self.MAX_FAILED_ATTEMPTS:
+            self._lock()
+            self.flag_suspicious_activity(
+                f"Client locked after {self.MAX_FAILED_ATTEMPTS} failed login attempts."
+                f"Last attempt was at {self._last_failed_attempt_time}. "
+            )
+
+    def reset_failed_attempts(self):
+        """Reset failed login attempts counter on successful login."""
+        if self._failed_login_attempts > 0:
+            security_logger.info(
+                f"Failed login attempts reset for client {self._client_id} "
+                f"after successful authentication by {self._full_name}"
+            )
+        self._failed_login_attempts = 0
+        self._last_failed_attempt_time = None
+        self._is_suspicious = False
+        self._suspicious_activity = None
+
+
+    def check_locked(self):
+        """Check if client is locked due to failed login attempts."""
+        if self._is_locked:
+            security_logger.warning(
+                f"SUSPICIOUS ACTIVITY: Client {self._client_id} - {self._full_name} "
+                f"is locked due to {self.MAX_FAILED_ATTEMPTS} failed login attempts."
+            )
+            raise ClientLockedError(
+                f"Client {self._full_name} is locked "
+                f"after {self.MAX_FAILED_ATTEMPTS} failed login attempts. "
+                f"Please contact bank support to unlock."
+            )
 
 class Bank:
     """Bank class managing clients and accounts."""
@@ -755,14 +782,30 @@ class Bank:
     def accounts(self):
         return list(self._accounts.values())
 
-    def add_client(self, client_id, full_name, status, contact_details, age):
+    def get_client(self, client_id):
+        """Get a client by ID."""
+        client_id = client_id.strip()
+        if client_id not in self._clients:
+            raise InvalidOperationError(f"Client with ID '{client_id}' not found.")
+
+        return self._clients[client_id]
+
+    def get_account(self, account_number):
+        """Get an account by number."""
+        account_number = account_number.strip()
+
+        if account_number not in self._accounts:
+            raise InvalidOperationError(f"Account '{account_number}' not found.")
+
+        return self._accounts[account_number]
+
+    def add_client(self, client_id, full_name, contact_details, age):
         """
         Add a new client to the bank.
 
         Args:
             client_id: Unique client identifier
             full_name: Client's full name
-            status: Client status (e.g., 'active', 'inactive')
             contact_details: Client's contact information
             age: Client's age (must be >= 18)
 
@@ -777,8 +820,9 @@ class Bank:
         if client_id in self._clients:
             raise InvalidOperationError(f"Client with ID '{client_id}' already exists.")
 
-        client = Client(client_id, full_name, status, contact_details, age)
+        client = Client(client_id, full_name, contact_details, age)
         self._clients[client_id] = client
+
         return client
 
     def open_account(self, client_id, account_type="bank", **kwargs):
@@ -797,12 +841,7 @@ class Bank:
             InvalidOperationError: If client_id does not exist or account_type is invalid
         """
 
-        client_id = client_id.strip()
-
-        if client_id not in self._clients:
-            raise InvalidOperationError(f"Client with ID '{client_id}' not found.")
-
-        client = self._clients[client_id]
+        client = self.get_client(client_id)
 
         #Map account types to class
         account_classes = {
@@ -822,7 +861,11 @@ class Bank:
         AccountClass = account_classes[account_type_lower]
 
         # Create the account
-        account = AccountClass(owner=client.full_name, **kwargs)
+        account = AccountClass(
+            owner=client.full_name, 
+            client=client,
+            **kwargs
+            )
 
         self._accounts[account.account_number] = account
         client.add_account(account)
@@ -843,19 +886,20 @@ class Bank:
             InvalidOperationError: If account not found
             AccountClosedError: If the account is already closed
         """
-        account_number = account_number.strip()
-
-        if account_number not in self._accounts:
-            raise InvalidOperationError(f"Account with number '{account_number}' not found.")
-
-        account = self._accounts[account_number]
+        account = self.get_account(account_number)
         account.close()
+        del self._accounts[account_number]
 
         # Remove from client's account list
         # Find the client who owns this account
         for client in self._clients.values():
             if account_number in client.account_numbers:
                 client.remove_account(account_number)
+                
+                # If the last account is closed
+                if not client.account_numbers:
+                    client._status = ClientStatus.INACTIVE
+                    
                 break
 
         return account
@@ -871,12 +915,7 @@ class Bank:
             InvalidOperationError: If account not found
             AccountFrozenError: If the account is already frozen
         """
-        account_number = account_number.strip()
-
-        if account_number not in self._accounts:
-            raise InvalidOperationError(f"Account '{account_number}' not found.")
-
-        account = self._accounts[account_number]
+        account = self.get_account(account_number)
         account.freeze()
 
         return account
@@ -893,14 +932,10 @@ class Bank:
 
         Raises:
             InvalidOperationError: If account not found
-            AccountClosedError: If account is closed
+            AccountClosedError: If the account is already closed
         """
-        account_number = account_number.strip()
 
-        if account_number not in self._accounts:
-            raise InvalidOperationError(f"Account '{account_number}' not found.")
-
-        account = self._accounts[account_number]
+        account = self.get_account(account_number)
         account.activate()
 
         return account
@@ -917,21 +952,20 @@ class Bank:
             The authenticated Client object
 
         Raises:
-            InvalidOperationError: If client not found or authentication fails 
+            InvalidOperationError: If client not found or authentication fails
         """
-        client_id = client_id.strip()
 
-        if client_id not in self._clients:
-            raise InvalidOperationError(f"Client with ID '{client_id}' not found.")
+        client = self.get_client(client_id)
+        client.check_locked()
 
-        client = self._clients[client_id]
-        if contact_details and client.contact_details != contact_details:
+        if contact_details is None or client.contact_details != contact_details:
+            client.record_failed_login()
+
             raise InvalidOperationError(
-                "Authentication failed: contact details do not match."
+            "Authentication failed: contact details do not match."
             )
-
-        if client.status.lower() != "active":
-            raise InvalidOperationError(f"Client '{client_id}' is not active.")
+    
+        client.reset_failed_attempts()
 
         return client
 
@@ -968,7 +1002,7 @@ class Bank:
                 if isinstance(criteria["status"], AccountStatus):
                     status_value = criteria["status"].value
                 else:
-                    status_value = str(criteria["status"]).upper()
+                    status_value = str(criteria["status"]).lower()
                 if account.status.value != status_value:
                     match = False
 
@@ -980,33 +1014,66 @@ class Bank:
 
             # Check minimum balance
             if ("min_balance" in criteria) and match and (
-                account.balance < criteria["min_balance"]                           
+                account.balance < Decimal(str(criteria["min_balance"]))                        
             ):
                 match = False
 
             # Check maximum balance
             if ("max_balance" in criteria) and match and (
-                account.balance > criteria["max_balance"]
+                account.balance > Decimal(str(criteria["max_balance"]))
             ):
                 match = False
 
             if match:
                 results.append(account)
 
-            return results
-
-    def get_clients(self, client_id):
-        """Get a client by ID."""
-        client_id = client_id.strip()
-        return self._clients.get(client_id)
-
-    def get_account(self, account_number):
-        """Get an account by number."""
-        account_number = account_number.strip()
-        return self._accounts.get(account_number)
+        return results
 
     def __str__(self):
         return f"Bank: {self._name}, Clients: {len(self._clients)}, Accounts: {len(self._accounts)}"
 
+    # Security methods
+    def lock_client(self, client_id):
+        """Lock a client (admin operation)."""
 
-           
+        client = self.get_client(client_id)
+        client._lock()
+
+        return client
+
+    def unlock_client(self, client_id):
+        """Unlock a client (admin operation)."""
+    
+        client = self.get_client(client_id)
+        client._unlock()
+
+        return client
+
+    def get_client_security_status(self, client_id):
+        """Return a snapshot of the client's security state.
+        Args:
+            client_id: Unique client identifier.
+
+        Returns:
+            client_id (str): Client ID.
+            full_name (str): Full name.
+            status (str): Client status ('active' / 'inactive').
+            is_locked (bool): Whether the client is locked.
+            failed_login_attempts (int): Current number of failed attempts.
+            max_failed_attempts (int): Threshold after which locking occurs.
+            is_suspicious (bool): Whether the client is flagged as suspicious.
+            suspicious_activity (str): Recent suspicious activity.
+        """
+
+        client = self.get_client(client_id)
+
+        return {
+            "client_id": client._client_id,
+            "full_name": client._full_name,
+            "status": client._status.value,  
+            "is_locked": client._is_locked,
+            "failed_login_attempts": client._failed_login_attempts,
+            "max_failed_attempts": client.MAX_FAILED_ATTEMPTS,
+            "is_suspicious": client._is_suspicious,
+            "suspicious_activity": client._suspicious_activity,
+        }
