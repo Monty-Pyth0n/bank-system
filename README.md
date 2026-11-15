@@ -1,13 +1,16 @@
 # bank-system
 
-A multi-level banking system implemented as object-oriented modules in Python. The project provides bank account models with operation validation, a status system, custom exceptions, and three concrete account types.
+A multi-level banking system implemented as object-oriented modules in Python. The project provides bank account models with operation validation, a status system, custom exceptions, and three concrete account types, plus a client–bank layer with authentication, account management, and security controls.
 
 ## Features
 
-- **BankAccount** — base account type with deposit/withdraw operations, status management (active/frozen/closed), and currency support (RUB, USD, EUR, KZT, CNY).
+- **BankAccount** — base account type with deposit/withdraw operations, status management (active/frozen/closed), daily withdrawal limit, and currency support (RUB, USD, EUR, KZT, CNY).
 - **SavingsAccount** — adds minimum balance requirement and monthly interest calculation.
 - **PremiumAccount** — adds overdraft facility and a fixed withdrawal fee.
 - **InvestmentAccount** — manages a portfolio across asset types (stocks, bonds, etf) with yearly growth projection.
+- **Client** — personal information with age validation (18+), account list, failed-login tracking, lock/unlock, and suspicious-activity flagging.
+- **Bank** — client and account management: open/close/freeze/unfreeze accounts, authentication with lockout after 3 failed attempts, account search by criteria, total balance, and client ranking.
+- **Security** — transactions prohibited during 00:00–05:00 (`TransactionProhibitedError`); suspicious activity is logged via the `logging` module.
 
 All monetary calculations use `Decimal` for exact precision.
 
@@ -16,15 +19,15 @@ All monetary calculations use `Decimal` for exact precision.
 ```
 bank-system/
 ├── README.md            # This file
-├── requirements.txt      # Dependencies (pytest)
+├── requirements.txt     # Dependencies (pytest)
 ├── docs/
 │   └── algorithm.md     # Detailed algorithm documentation
 ├── src/
 │   ├── __init__.py
 │   ├── main.py          # Demo script (CLI scenario)
-│   ├── models.py        # Domain models: accounts, statuses, exceptions
+│   ├── models.py        # Domain models: accounts, clients, bank, statuses, exceptions
 │   ├── utils.py         # Helper functions
-│   └── run_app.bat     # Launch the application
+│   └── run_app.bat      # Launch the application
 └── tests/
     ├── run_tests.bat    # Run unit tests
     └── test_main.py     # Unit tests (pytest)
