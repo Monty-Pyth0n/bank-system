@@ -1075,10 +1075,18 @@ class Bank:
         }
 
     def get_total_balance(self):
-        """Calculate the total balance across all accounts in the bank."""
+        """Calculate the total balance across all accounts in the bank and the portfolio"""
         total = Decimal("0.00")
         for account in self._accounts.values():
             total += account.balance
+
+        total = Decimal("0.00")
+        for account in self._accounts.values():
+            # InvestmentAccount has _total_balance, other — just balance
+            if hasattr(account, '_total_balance'):
+                total += account._total_balance
+            else:
+                total += account.balance
         return total
 
     def get_clients_ranking(self):
@@ -1089,7 +1097,10 @@ class Bank:
             for account_number in client.account_numbers:
                 account = self._accounts.get(account_number)
                 if account:
-                    total_balance += account.balance
+                    if hasattr(account, '_total_balance'):
+                        total_balance += account._total_balance
+                    else:
+                        total_balance += account.balance
             client_balances.append((client, total_balance))
         
         # Sort by balance descending
