@@ -479,7 +479,8 @@ class InvestmentAccount(BankAccount):
             withdrawal_limit,
             client=client
             )
-        self.portfolio = {asset: Decimal(0) for asset in self.SUPPORTED_ASSET_TYPES}
+        self._portfolio = {asset: Decimal(0) for asset in self.SUPPORTED_ASSET_TYPES}
+        self._total_balance = balance
 
     def allocate(self, asset_type, amount):
         """Allocate funds to a specific asset type in the investment portfolio."""
@@ -506,8 +507,9 @@ class InvestmentAccount(BankAccount):
         self._check_suspicious_activity(amount, "allocation")
 
         self._balance -= amount
-        self.portfolio[asset_type] += amount
-        return self.portfolio[asset_type]
+        self._portfolio[asset_type] += amount
+        self._total_balance = self._balance + sum(self._portfolio.values())
+        return self._portfolio[asset_type]
 
     def project_yearly_growth(self, growth_rates):
         """Calculate expected annual growth based on the growth rates per asset type."""
@@ -521,30 +523,27 @@ class InvestmentAccount(BankAccount):
 
         total_growth = Decimal(0)
         for asset_type, rate in growth_rates.items():
-            total_growth += self.portfolio[asset_type] * Decimal(str(rate))
+            total_growth += self._portfolio[asset_type] * Decimal(str(rate))
 
         return total_growth
 
     def get_account_info(self):
         info = super().get_account_info()
-        portfolio_value = sum(self.portfolio.values())
-        total_value = self._balance + portfolio_value
+        portfolio_value = sum(self._portfolio.values())
         info.update(
             {
                 "account_type": type(self).__name__,
-                "portfolio": {k: str(v) for k, v in self.portfolio.items()},
+                "portfolio": {k: str(v) for k, v in self._portfolio.items()},
                 "portfolio_value": portfolio_value,
-                "total_value": total_value,
+                "total_balance": self._total_balance,
             }
         )
         return info
 
     def __str__(self):
         last_four = self._account_number[-4:]
-
-        portfolio_str = ', '.join(f"{k}: {v:.2f}" for k, v in self.portfolio.items())
-        total_value = self._balance + sum(self.portfolio.values())
-        
+        portfolio_str = ', '.join(f"{k}: {v:.2f}" for k, v in self._portfolio.items())
+       
         rows = [
             ("Account type", type(self).__name__),
             ("Customer", self._owner),
@@ -552,7 +551,7 @@ class InvestmentAccount(BankAccount):
             ("Status", self._status.value),
             ("Withdrawal limit", f"{self.withdrawal_limit:.2f} {self.currency}"),
             ("Portfolio", portfolio_str),
-            ("Balance", f"{total_value:.2f} {self.currency}"),
+            ("Total balance", f"{self._total_balance:.2f} {self.currency}"),
         ]
 
         return build_account_table(rows)
