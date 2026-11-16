@@ -200,6 +200,7 @@ def main():
         print("\n--- Add the clients ---")
         bank.add_client("CL001", "Ivan Petrov", "ivan@example.com", 25)
         bank.add_client("CL002", "Anna Smirnova", "anna@example.com", 30)
+        bank.add_client("CL003", "Alex Smith", "alex@example.com", 40)
         print(*bank.clients, sep="\n")
 
         # Open accounts
@@ -215,13 +216,37 @@ def main():
             "CL002", "premium", balance=20000, overdraft_limit=10000, fixed_fee=200
         )
         print(anna_premium)
+
+        alex_invest = bank.open_account(
+            "CL003", "investment", balance=1000000,
+        )
+        print(alex_invest)
+
+        try:
+            alex_invest.allocate("stocks", 50000)
+            alex_invest.allocate("bonds", 200000)
+            alex_invest.allocate("etf", 500000)
+            print("After portfolio allocation:")
+            print(alex_invest)
+            print(f"Account info: {alex_invest.get_account_info()}\n")
+
+            # Project yearly growth
+            growth = alex_invest.project_yearly_growth(
+                {"stocks": 0.10, "bonds": 0.04, "etf": 0.07}
+            )
+            print(f"Projected yearly growth: {growth:.2f} {alex_invest.currency}")
+
+        except InsufficientFundsError as error:
+            print(f"Portfolio allocation rejected: {error}")
         
         # Authenticate clients
-        print("--- Authentication of clients ---")
+        print("\n--- Authentication of clients ---")
         bank.authenticate_client("CL001", "ivan@example.com")
         bank.authenticate_client("CL002", "anna@example.com")
+        bank.authenticate_client("CL003", "alex@example.com")
         print(bank.get_client("CL001"))
         print(bank.get_client("CL002"))
+        print(bank.get_client("CL003"))
 
         # Authentication with wrong credentials
         print("\n--- Authentication with wrong credentials ---")
