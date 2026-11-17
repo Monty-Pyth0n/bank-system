@@ -238,7 +238,24 @@ def main():
 
         except InsufficientFundsError as error:
             print(f"Portfolio allocation rejected: {error}")
-        
+
+        try:
+            alex_invest.withdraw(50000)
+            print("\nAfter withdrawal of 50000 RUB:")
+            print(alex_invest)
+            print(f"Account info: {alex_invest.get_account_info()}\n")
+        except InsufficientFundsError as error:
+            print(f"Withdrawal is rejected. {error}")
+
+        try:
+            alex_invest.deposit(150000)
+            print("\nAfter deposit of 150000 RUB:")
+            print(alex_invest)
+            print(f"Account info: {alex_invest.get_account_info()}\n")
+        except InsufficientFundsError as error:
+            print(f"Deposit is rejected. {error}")
+            
+
         # Authenticate clients
         print("\n--- Authentication of clients ---")
         bank.authenticate_client("CL001", "ivan@example.com")
