@@ -480,7 +480,11 @@ class InvestmentAccount(BankAccount):
             client=client
             )
         self._portfolio = {asset: Decimal(0) for asset in self.SUPPORTED_ASSET_TYPES}
-        self._total_balance = balance
+
+    @property
+    def total_balance(self):
+        """Total balance = free cash + portfolio value."""
+        return self._balance + sum(self._portfolio.values())
 
     def allocate(self, asset_type, amount):
         """Allocate funds to a specific asset type in the investment portfolio."""
@@ -508,7 +512,6 @@ class InvestmentAccount(BankAccount):
 
         self._balance -= amount
         self._portfolio[asset_type] += amount
-        self._total_balance = self._balance + sum(self._portfolio.values())
         return self._portfolio[asset_type]
 
     def project_yearly_growth(self, growth_rates):
@@ -535,7 +538,7 @@ class InvestmentAccount(BankAccount):
                 "account_type": type(self).__name__,
                 "portfolio": {k: str(v) for k, v in self._portfolio.items()},
                 "portfolio_value": portfolio_value,
-                "total_balance": self._total_balance,
+                "total_balance": self.total_balance,
             }
         )
         return info
@@ -551,7 +554,7 @@ class InvestmentAccount(BankAccount):
             ("Status", self._status.value),
             ("Withdrawal limit", f"{self.withdrawal_limit:.2f} {self.currency}"),
             ("Portfolio", portfolio_str),
-            ("Total balance", f"{self._total_balance:.2f} {self.currency}"),
+            ("Total balance", f"{self.total_balance:.2f} {self.currency}"),
         ]
 
         return build_account_table(rows)
