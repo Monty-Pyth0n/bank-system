@@ -83,7 +83,8 @@ class Client:
     def suspicious_activity(self):
         return self._suspicious_activity
 
-    def _validate_age(self, age):
+    @staticmethod
+    def _validate_age(age):
         """Validate that the client is at least 18 years old."""
         try:
             age_value = int(age)
