@@ -464,6 +464,10 @@ class InvestmentAccount(BankAccount):
         """Total balance = free cash + portfolio value."""
         return self._balance + sum(self._portfolio.values())
 
+    def withdraw(self, amount):
+        """Withdraw funds from the investment account."""
+        return super().withdraw(amount)
+
     def allocate(self, asset_type, amount):
         """Allocate funds to a specific asset type in the investment portfolio."""
         self._check_status()
