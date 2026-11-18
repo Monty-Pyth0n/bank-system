@@ -6,7 +6,7 @@ from src.exceptions import InvalidOperationError
 ALLOWED_CURRENCIES = frozenset({"RUB", "USD", "EUR", "KZT", "CNY"})
 
 
-def _validate_amount(amount) -> Decimal:
+def validate_amount(amount) -> Decimal:
     """Convert an amount to Decimal and validate it."""
     if isinstance(amount, bool):
         raise InvalidOperationError("Amount must be a number.")
@@ -23,6 +23,21 @@ def _validate_amount(amount) -> Decimal:
         raise InvalidOperationError("Amount cannot be negative.")
 
     return value
+
+def validate_currency(currency: str) -> str:
+    """Validate currency code."""
+    if not isinstance(currency, str) or not currency.strip():
+        raise InvalidOperationError(
+            "Currency must be a string and cannot be empty."
+            )
+
+    currency = currency.strip().upper()
+    if currency not in ALLOWED_CURRENCIES:
+        raise InvalidOperationError(
+            f"Currency '{currency}' is not supported. "
+            f"Allowed: {', '.join(sorted(ALLOWED_CURRENCIES))}"
+        )
+    return currency
 
 def generate_account_number():
     return uuid4().hex[:8].upper()
