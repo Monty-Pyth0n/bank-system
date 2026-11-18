@@ -11,7 +11,12 @@ from ..exceptions import (
     TransactionProhibitedError,
 )
 from ..logging import security_logger
-from ..utils import build_account_table, generate_account_number
+from ..utils import (
+    ALLOWED_CURRENCIES,
+    _validate_amount,
+    build_account_table,
+    generate_account_number,
+)
 
 # ======================================
 # Day 1: Basic Banking Account Model
@@ -31,7 +36,7 @@ class AbstractAccount(ABC):
             raise InvalidOperationError("Owner name cannot be empty.")
 
         self._owner = owner.strip()
-        self._balance = self._validate_amount(balance)
+        self._balance = _validate_amount(balance)
         self._account_number = (
             str(account_number).strip()
             if account_number is not None
@@ -40,25 +45,6 @@ class AbstractAccount(ABC):
 
         if not self._account_number:
             raise InvalidOperationError("Account number cannot be empty.")
-
-    @staticmethod
-    def _validate_amount(amount):
-        """Convert an amount to Decimal and validate it."""
-        if isinstance(amount, bool):
-            raise InvalidOperationError("Amount must be a number.")
-
-        try:
-            value = Decimal(str(amount))
-        except (InvalidOperation, ValueError, TypeError):
-            raise InvalidOperationError("Amount must be a valid number.")
-
-        if not value.is_finite():
-            raise InvalidOperationError("Amount must be finite.")
-
-        if value < 0:
-            raise InvalidOperationError("Amount cannot be negative.")
-
-        return value
 
     @abstractmethod
     def deposit(self, amount):
@@ -75,7 +61,7 @@ class AbstractAccount(ABC):
 
 # Bank account
 class BankAccount(AbstractAccount):
-    ALLOWED_CURRENCIES = {"RUB", "USD", "EUR", "KZT", "CNY"}  # noqa: RUF012
+    
     DEFAULT_WITHDRAWAL_LIMIT = Decimal("100000.00")  # Default daily withdrawal limit
 
     PROHIBITED_HOURS_START = 0  # 00:00
@@ -98,10 +84,10 @@ class BankAccount(AbstractAccount):
 
         currency = currency.upper()
 
-        if currency not in self.ALLOWED_CURRENCIES:
+        if currency not in ALLOWED_CURRENCIES:
             raise InvalidOperationError(
                 f"Unsupported currency: {currency}. "
-                f"Allowed currencies: {', '.join(sorted(self.ALLOWED_CURRENCIES))}"
+                f"Allowed currencies: {', '.join(sorted(ALLOWED_CURRENCIES))}"
             )
 
         if not isinstance(status, AccountStatus):
@@ -111,7 +97,7 @@ class BankAccount(AbstractAccount):
         self._status = status
         self._client = client
         self.withdrawal_limit = (
-            self._validate_amount(withdrawal_limit)
+            _validate_amount(withdrawal_limit)
             if withdrawal_limit is not None
             else self.DEFAULT_WITHDRAWAL_LIMIT
         )
@@ -176,7 +162,7 @@ class BankAccount(AbstractAccount):
     def deposit(self, amount):
         self._check_status()
 
-        amount = self._validate_amount(amount)
+        amount = _validate_amount(amount)
 
         if amount == 0:
             raise InvalidOperationError("Deposit amount must be greater than zero.")
@@ -191,7 +177,7 @@ class BankAccount(AbstractAccount):
     def withdraw(self, amount):
         self._check_status()
 
-        amount = self._validate_amount(amount)
+        amount = _validate_amount(amount)
 
         if amount == 0:
             raise InvalidOperationError("Withdrawal amount must be greater than zero.")
@@ -291,7 +277,7 @@ class SavingsAccount(BankAccount):
         self.interest_rate = interest_rate
 
     def withdraw(self, amount):
-        amount = self._validate_amount(amount)
+        amount = _validate_amount(amount)
 
         if self._balance - amount < self.min_balance:
             raise InsufficientFundsError(
@@ -367,12 +353,12 @@ class PremiumAccount(BankAccount):
             withdrawal_limit,
             client=client,
         )
-        self.overdraft_limit = self._validate_amount(overdraft_limit)
-        self.fixed_fee = self._validate_amount(fixed_fee)
+        self.overdraft_limit = _validate_amount(overdraft_limit)
+        self.fixed_fee = _validate_amount(fixed_fee)
 
     def withdraw(self, amount):
         self._check_status()
-        amount = self._validate_amount(amount)
+        amount = _validate_amount(amount)
 
         if amount == 0:
             raise InvalidOperationError("Withdrawal amount must be greater than zero.")
@@ -472,7 +458,7 @@ class InvestmentAccount(BankAccount):
         """Allocate funds to a specific asset type in the investment portfolio."""
         self._check_status()
 
-        amount = self._validate_amount(amount)
+        amount = _validate_amount(amount)
 
         if asset_type not in self.SUPPORTED_ASSET_TYPES:
             raise InvalidOperationError(
