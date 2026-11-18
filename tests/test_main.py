@@ -1,36 +1,41 @@
-from decimal import Decimal  # noqa: I001
 from datetime import datetime
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
 
+from src.exceptions import (
+    AccountClosedError,
+    AccountFrozenError,
+    ClientLockedError,
+    InsufficientFundsError,
+    InvalidOperationError,
+    TransactionProhibitedError,
+)
 from src.models import (
     AccountStatus,
-    BankAccount,
-    SavingsAccount,
-    PremiumAccount,
-    InvestmentAccount,
-    ClientStatus,
-    Client,
     Bank,
-    AccountFrozenError,
-    AccountClosedError,
-    InvalidOperationError,
-    InsufficientFundsError,
-    ClientLockedError,
-    TransactionProhibitedError,
+    BankAccount,
+    Client,
+    ClientStatus,
+    InvestmentAccount,
+    PremiumAccount,
+    SavingsAccount,
 )
 
 
 @pytest.fixture(autouse=True)
 def mock_datetime():
     """Mock datetime.now() to return a time outside prohibited hours (00:00-05:00)."""
-    with patch("src.models.datetime") as mock_dt:
-        # Set to 12:00 (noon) - outside prohibited hours
-        mock_dt.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
-        # Need to keep the real datetime class for other uses
-        mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
-        yield mock_dt
+    with patch("src.models.accounts.datetime") as mock_acc_dt, \
+            patch("src.models.client.datetime") as mock_dt:
+            # Set to 12:00 (noon) - outside prohibited hours
+            freezed_time = datetime(2024, 1, 1, 12, 0, 0)
+            for mock in (mock_dt, mock_acc_dt):
+                mock.now.return_value = freezed_time
+                # Need to keep the real datetime class for other uses
+                mock.side_effect = lambda *args, **kw: datetime(*args, **kw)
+            yield mock
 
 ########################
 # Day 1: Basic Bank Account Operations
@@ -379,7 +384,7 @@ def test_investment_account_get_account_info():
     account.allocate("stocks", 1000)
     info = account.get_account_info()
     assert info["portfolio_value"] == Decimal("1000.00")
-    assert info["total_value"] == Decimal("5000.00")
+    assert info["total_balance"] == Decimal("5000.00")
 
 
 def test_investment_account_str():

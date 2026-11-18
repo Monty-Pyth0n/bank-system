@@ -1,27 +1,33 @@
-from decimal import Decimal  # noqa: I001
 from datetime import datetime
 from unittest.mock import patch
-from src.models import (  # noqa: I001
-    AccountStatus,
-    BankAccount,
-    SavingsAccount,
-    PremiumAccount,
-    InvestmentAccount,
-    Bank,
-    AccountFrozenError,
+
+from src.exceptions import (
     AccountClosedError,
-    InvalidOperationError,
-    InsufficientFundsError,
+    AccountFrozenError,
     ClientLockedError,
+    InsufficientFundsError,
+    InvalidOperationError,
     TransactionProhibitedError,
 )
+from src.models import (
+    AccountStatus,
+    Bank,
+    BankAccount,
+    InvestmentAccount,
+    PremiumAccount,
+    SavingsAccount,
+)
+
 
 def main():
-    with patch("src.models.datetime") as mock_dt:
+    with patch("src.models.accounts.datetime") as mock_acc_dt, \
+        patch("src.models.client.datetime") as mock_dt:
         # Set to 12:00 (noon) - outside prohibited hours
-        mock_dt.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
-        # Need to keep the real datetime class for other uses
-        mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
+        freezed_time = datetime(2024, 1, 1, 12, 0, 0)
+        for mock in (mock_dt, mock_acc_dt):
+            mock.now.return_value = freezed_time
+            # Need to keep the real datetime class for other uses
+            mock.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
         print("===============================")
         print("      Bank Account System")
