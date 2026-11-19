@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
 from src.exceptions import InvalidOperationError
@@ -13,7 +13,7 @@ def validate_amount(amount) -> Decimal:
 
     try:
         value = Decimal(str(amount))
-    except (ValueError, TypeError, ArithmeticError):
+    except (InvalidOperation, ValueError, TypeError):
         raise InvalidOperationError("Amount must be a valid number.")
 
     if not value.is_finite():

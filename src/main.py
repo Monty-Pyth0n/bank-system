@@ -34,23 +34,26 @@ def main():
         print("===============================")
         print("\n=== Creating accounts ===")
 
-        # Active account
-        active_account = BankAccount(
-            owner="Ivan Petrov",
-            balance=1000,
-            currency="RUB"
-        )
+        try:
+            # Active account
+            active_account = BankAccount(
+                owner="Ivan Petrov",
+                balance=1000,
+                currency="RUB"
+            )
+            # Frozen account
+            frozen_account = BankAccount(
+                owner="Anna Smirnova",
+                balance=500,
+                currency="USD",
+                status=AccountStatus.FROZEN,
+            )
+            print(active_account)
+            print(frozen_account)
 
-        # Frozen account
-        frozen_account = BankAccount(
-            owner="Anna Smirnova",
-            balance=500,
-            currency="USD",
-            status=AccountStatus.FROZEN
-        )
-
-        print(active_account)
-        print(frozen_account)
+        except InvalidOperationError as error:
+            print(f"The invalid argument is provided: {error}")
+            return
 
         # Operations on the active account
         print("\n=== Operations on the active account ===")
