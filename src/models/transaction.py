@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from decimal import Decimal
 from enum import Enum
 from heapq import heappop, heappush
@@ -559,4 +559,163 @@ class TransactionProcessor:
         """
         return self._EXCHANGE_RATES.get(currency.upper().strip())
 
-    
+    # ------------------------------------------------------------------
+    # Transaction processing
+    # ------------------------------------------------------------------
+    def process(self, transaction: Transaction) -> bool:
+        """
+        Process a single transaction through its lifecycle.
+
+        Steps:
+        1. Reject if transaction is already in a final state
+        2. Set status to PROCESSING
+        3. Calculate and apply fee
+        4. Mark as COMPLETED on success or FAILED on error
+
+        Args:
+            transaction: Transaction to process
+
+        Returns:
+            True if transaction completed successfully, False otherwise
+        """
+        if transaction.is_finalized():
+            self.log_error(
+                transaction,
+                InvalidOperationError(
+                    f"Transaction {transaction.id} is already "
+                    f"{transaction.status.value}"
+                ),
+            )
+            return False
+
+        try:
+            transaction._set_status(TransactionStatus.PROCESSING)
+
+            self.apply_fee(transaction)
+
+            transaction._set_status(TransactionStatus.COMPLETED)
+            return True
+
+        except (InvalidOperationError, TransactionFailedError) as e:
+            transaction._set_status(TransactionStatus.FAILED, failure_reason=str(e))
+            self.log_error(transaction, e)
+            return False
+
+    def process_queue(self) -> dict[str, int]:
+        """
+        Process all pending transactions in the queue.
+
+        Transactions are dequeued in priority order and processed one by one.
+        Already finalized transactions are skipped.
+
+        Returns:
+            Dictionary with counts: {"completed": n, "failed": n, "skipped": n}
+        """
+        stats = {"completed": 0, "failed": 0, "skipped": 0}
+
+        while not self._queue.is_empty():
+            transaction = self._queue.get_next()
+            if transaction is None:
+                break
+
+            if transaction.is_finalized():
+                stats["skipped"] += 1
+                continue
+
+            if self.process(transaction):
+                stats["completed"] += 1
+            else:
+                stats["failed"] += 1
+
+        return stats
+
+    # Retry logic
+    def retry_failed(self, transaction: Transaction) -> bool:
+        """
+        Retry a failed transaction.
+
+        The transaction is reset to PENDING status, its failure reason is
+        cleared, and it is re-added to the queue with HIGH priority.
+
+        Args:
+            transaction: Failed transaction to retry
+
+        Returns:
+            True if the retry was queued, False if max retries exceeded
+            or the transaction is not in FAILED state
+        """
+        if transaction.status != TransactionStatus.FAILED:
+            self.log_error(
+                transaction,
+                InvalidOperationError(
+                    f"Only failed transactions can be retried, "
+                    f"current status: {transaction.status.value}"
+                ),
+            )
+            return False
+
+        count = self._retry_counts.get(transaction.id, 0)
+        if count >= self._max_retries:
+            self.log_error(
+                transaction,
+                InvalidOperationError(
+                    f"Max retries ({self._max_retries}) exceeded for "
+                    f"transaction {transaction.id}"
+                ),
+            )
+            return False
+
+        self._retry_counts[transaction.id] = count + 1
+        transaction._set_status(TransactionStatus.PENDING)
+        transaction._failure_reason = None
+        self._queue.add(transaction, TransactionPriority.HIGH)
+        return True
+
+    def get_retry_count(self, transaction_id: str) -> int:
+        """
+        Return the number of retry attempts for a transaction.
+
+        Args:
+            transaction_id: ID of the transaction
+
+        Returns:
+            Number of retries attempted (0 if never retried)
+        """
+        return self._retry_counts.get(transaction_id, 0)
+
+    def clear_retry_count(self, transaction_id: str) -> None:
+        """
+        Clear the retry count for a transaction.
+
+        Args:
+            transaction_id: ID of the transaction
+        """
+        self._retry_counts.pop(transaction_id, None)
+
+    # Error logging
+    def log_error(self, transaction: Transaction, error: Exception) -> None:
+        """
+        Log a transaction processing error.
+
+        The error is recorded in the in-memory error log and also emitted
+        via the standard logging module under the "bank.transaction" logger.
+
+        Args:
+            transaction: Transaction that encountered the error
+            error: Exception that was raised
+        """
+        error_entry = {
+            "transaction_id": transaction.id,
+            "error": str(error),
+            "error_type": type(error).__name__,
+            "timestamp": datetime.now(UTC).isoformat(),
+            "transaction_status": transaction.status.value,
+        }
+        self._error_log.append(error_entry)
+
+        self._logger.error(
+            "Transaction %s failed: %s (%s)",
+            transaction.id,
+            error,
+            type(error).__name__,
+        )
