@@ -21,6 +21,7 @@ class TransactionType(Enum):
     FEE = "fee"
     INTEREST = "interest"
 
+
 # Transaction Status
 class TransactionStatus(Enum):
     PENDING = "pending"
@@ -212,3 +213,184 @@ class Transaction:
         )
 
 
+# Transaction Priority
+class TransactionPriority(Enum):
+    """Priority levels for transaction processing."""
+
+    LOW = 0
+    NORMAL = 1
+    HIGH = 2
+    URGENT = 3
+
+
+# Transaction Queue
+class TransactionQueue:
+    """
+    Queue for managing transaction processing with priority support.
+
+    Features:
+    - Add transactions with priority
+    - Schedule deferred operations
+    - Cancel transactions
+    - Priority-based processing order
+    """
+
+    def __init__(self):
+        self._queue: list[
+            tuple[int, int, Transaction]
+        ] = []  # (priority, sequence, transaction)
+        self._sequence = 0  # For FIFO ordering within same priority
+        self._cancelled_ids: set[str] = set()
+        # transaction_id -> (scheduled_time, transaction, priority)
+        self._scheduled: dict[
+            str, tuple[datetime, Transaction, TransactionPriority]
+        ] = {}
+
+    def add(
+        self,
+        transaction: Transaction,
+        priority: TransactionPriority = TransactionPriority.NORMAL,
+    ) -> None:
+        """
+        Add a transaction to the queue with specified priority.
+
+        Args:
+            transaction: Transaction to add
+            priority: Processing priority (default: NORMAL)
+        """
+        if transaction.id in self._cancelled_ids:
+            self._cancelled_ids.discard(transaction.id)
+
+        # Negative priority for max-heap behavior (higher priority = processed first)
+        heappush(self._queue, (-priority.value, self._sequence, transaction))
+        self._sequence += 1
+
+    def add_scheduled(
+        self,
+        transaction: Transaction,
+        scheduled_at: datetime,
+        priority: TransactionPriority = TransactionPriority.NORMAL,
+    ) -> None:
+        """
+        Schedule a transaction for future processing.
+
+        Args:
+            transaction: Transaction to schedule
+            scheduled_at: When to process the transaction
+            priority: Processing priority (default: NORMAL)
+        """
+        if scheduled_at <= datetime.now():
+            # If scheduled time has passed, add to queue immediately
+            self.add(transaction, priority)
+        else:
+            # Store scheduled transaction with its priority
+            self._scheduled[transaction.id] = (scheduled_at, transaction, priority)
+
+    def get_next(self) -> Transaction | None:
+        """
+        Get the next transaction to process (highest priority, earliest added).
+
+        Returns:
+            Next transaction or None if queue is empty
+        """
+        # Check for scheduled transactions that are now due
+        self._process_scheduled()
+
+        while self._queue:
+            _, _, transaction = heappop(self._queue)
+            if transaction.id not in self._cancelled_ids:
+                return transaction
+        return None
+
+    def _process_scheduled(self) -> None:
+        """Move scheduled transactions that are due to the active queue."""
+        now = datetime.now()
+        due_ids = [
+            tid
+            for tid, (scheduled_time, _, _) in self._scheduled.items()
+            if scheduled_time <= now
+        ]
+        for tid in due_ids:
+            _, transaction, priority = self._scheduled.pop(tid)
+            self.add(transaction, priority)
+
+    def cancel(self, transaction_id: str) -> bool:
+        """
+        Cancel a transaction in the queue.
+
+        Args:
+            transaction_id: ID of transaction to cancel
+
+        Returns:
+            True if transaction was found and cancelled, False otherwise
+        """
+        # Mark as cancelled (will be skipped when popped)
+        self._cancelled_ids.add(transaction_id)
+
+        # Also remove from scheduled if present
+        if transaction_id in self._scheduled:
+            del self._scheduled[transaction_id]
+            return True
+
+        # Check if in queue (we can't easily remove from heap, so just mark)
+        for _, _, txn in self._queue:
+            if txn.id == transaction_id:
+                return True
+        return False
+
+    def set_priority(self, transaction_id: str, priority: TransactionPriority) -> bool:
+        """
+        Change priority of a transaction in the queue.
+
+        Note: Since heap doesn't support efficient update, we mark old entry
+        as cancelled and add a new one with updated priority.
+
+        Args:
+            transaction_id: ID of transaction to update
+            priority: New priority level
+
+        Returns:
+            True if transaction was found and priority updated, False otherwise
+        """
+        # Find and cancel the old entry
+        for i, (_, _, txn) in enumerate(self._queue):
+            if txn.id == transaction_id:
+                self._cancelled_ids.add(transaction_id)
+                # Re-add with new priority
+                heappush(self._queue, (-priority.value, self._sequence, txn))
+                self._sequence += 1
+                return True
+        return False
+
+    def peek(self) -> Transaction | None:
+        """View the next transaction without removing it."""
+        self._process_scheduled()
+        for _, _, txn in self._queue:
+            if txn.id not in self._cancelled_ids:
+                return txn
+        return None
+
+    def size(self) -> int:
+        """Return number of pending transactions in queue."""
+        self._process_scheduled()
+        return sum(1 for _, _, txn in self._queue if txn.id not in self._cancelled_ids)
+
+    def is_empty(self) -> bool:
+        """Check if queue has no pending transactions."""
+        return self.size() == 0
+
+    def get_scheduled_count(self) -> int:
+        """Return number of scheduled (future) transactions."""
+        return len(self._scheduled)
+
+    def clear_cancelled(self) -> int:
+        """Remove cancelled transactions from queue and return count removed."""
+        original_size = len(self._queue)
+        self._queue = [
+            (p, s, txn)
+            for p, s, txn in self._queue
+            if txn.id not in self._cancelled_ids
+        ]
+        removed = original_size - len(self._queue)
+        self._cancelled_ids.clear()
+        return removed
