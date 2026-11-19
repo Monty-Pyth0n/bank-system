@@ -18,6 +18,14 @@ from .accounts import (
 )
 from .bank import Bank
 from .client import Client, ClientStatus
+from .transaction import (
+    Transaction,
+    TransactionType,
+    TransactionStatus,
+    TransactionPriority,
+    TransactionQueue,
+    TransactionProcessor,
+)
 
 __all__ = [  # noqa: RUF022
     "Client",
@@ -29,6 +37,12 @@ __all__ = [  # noqa: RUF022
     "SavingsAccount",
     "PremiumAccount",
     "InvestmentAccount",
+    "Transaction",
+    "TransactionType",
+    "TransactionStatus",
+    "TransactionPriority",
+    "TransactionQueue",
+    "TransactionProcessor",
     "AccountFrozenError",
     "AccountClosedError",
     "InvalidOperationError",
