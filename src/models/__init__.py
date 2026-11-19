@@ -4,9 +4,10 @@ from ..exceptions import (
     ClientLockedError,
     InsufficientFundsError,
     InvalidOperationError,
+    TransactionFailedError,
     TransactionProhibitedError,
 )
-from ..logging import security_logger
+from ..logging import security_logger, transaction_logger
 from ..utils import build_account_table, generate_account_number
 from .accounts import (
     AbstractAccount,
@@ -20,11 +21,11 @@ from .bank import Bank
 from .client import Client, ClientStatus
 from .transaction import (
     Transaction,
-    TransactionType,
-    TransactionStatus,
     TransactionPriority,
-    TransactionQueue,
     TransactionProcessor,
+    TransactionQueue,
+    TransactionStatus,
+    TransactionType,
 )
 
 __all__ = [  # noqa: RUF022
@@ -49,7 +50,9 @@ __all__ = [  # noqa: RUF022
     "InsufficientFundsError",
     "ClientLockedError",
     "TransactionProhibitedError",
+    "TransactionFailedError",
     "security_logger",
+    "transaction_logger",
     "generate_account_number",
     "build_account_table",
 ]

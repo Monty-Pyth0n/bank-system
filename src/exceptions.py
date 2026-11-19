@@ -21,3 +21,6 @@ class ClientLockedError(Exception):
 
 class TransactionProhibitedError(Exception):
     """Raised when a transaction is attempted during prohibited hours (00:00-05:00)."""
+
+class TransactionFailedError(Exception):
+    """Raised when a transaction fails during processing."""
