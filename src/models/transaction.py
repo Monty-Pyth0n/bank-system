@@ -394,3 +394,71 @@ class TransactionQueue:
         removed = original_size - len(self._queue)
         self._cancelled_ids.clear()
         return removed
+
+
+# Transaction Processor
+class TransactionProcessor:
+    """
+    Processor for executing transactions with fee calculation,
+    currency conversion, retry logic, and error logging.
+
+    This is a stub - full implementation will be added later.
+    """
+
+    def __init__(self, queue: TransactionQueue | None = None):
+        self._queue = queue or TransactionQueue()
+        self._retry_counts: dict[str, int] = {}
+        self._max_retries = 3
+
+    @property
+    def queue(self) -> TransactionQueue:
+        return self._queue
+
+    def calculate_fee(self, transaction: Transaction) -> Decimal:
+        """Calculate fee for a transaction based on type and amount."""
+        fee_rates = {
+            TransactionType.TRANSFER: Decimal("0.01"),  # 1%
+            TransactionType.PAYMENT: Decimal("0.005"),  # 0.5%
+            TransactionType.WITHDRAWAL: Decimal("0.002"),  # 0.2%
+            TransactionType.DEPOSIT: Decimal("0.00"),  # Free
+            TransactionType.REFUND: Decimal("0.00"),  # Free
+        }
+        rate = fee_rates.get(transaction.type, Decimal("0.01"))
+        return (transaction.amount * rate).quantize(Decimal("0.01"))
+
+    def convert_currency(
+        self, amount: Decimal, from_currency: str, to_currency: str
+    ) -> Decimal:
+        """Convert amount between currencies."""
+        # Stub implementation - to be expanded with real exchange rates
+        if from_currency == to_currency:
+            return amount
+        # Placeholder: 1:1 conversion for now
+        return amount
+
+    def process(self, transaction: Transaction) -> bool:
+        """
+        Process a single transaction.
+
+        Returns:
+            True if successful, False if failed
+        """
+        # Stub implementation
+        transaction._set_status(TransactionStatus.PROCESSING)
+        # ... processing logic would go here
+        transaction._set_status(TransactionStatus.COMPLETED)
+        return True
+
+    def retry_failed(self, transaction: Transaction) -> bool:
+        """Retry a failed transaction."""
+        count = self._retry_counts.get(transaction.id, 0)
+        if count >= self._max_retries:
+            return False
+        self._retry_counts[transaction.id] = count + 1
+        transaction._set_status(TransactionStatus.PENDING)
+        self._queue.add(transaction, TransactionPriority.HIGH)
+        return True
+
+    def log_error(self, transaction: Transaction, error: Exception) -> None:
+        """Log transaction processing error."""
+        print(f"ERROR processing {transaction.id}: {error}")
