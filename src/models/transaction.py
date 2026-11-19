@@ -2,9 +2,11 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from heapq import heappop, heappush
+from typing import ClassVar
 from uuid import uuid4
 
-from ..exceptions import InvalidOperationError
+from ..exceptions import InvalidOperationError, TransactionFailedError
+from ..logging import transaction_logger
 from ..utils import validate_amount, validate_currency
 
 # ======================================
@@ -402,63 +404,159 @@ class TransactionProcessor:
     Processor for executing transactions with fee calculation,
     currency conversion, retry logic, and error logging.
 
-    This is a stub - full implementation will be added later.
+    Features:
+    - Calculate fees based on transaction type and amount
+    - Convert currencies using configurable exchange rates
+    - Process transactions with full lifecycle management
+    - Retry failed transactions with configurable max attempts
+    - Log errors to both in-memory log and system logger
+    - Process all pending transactions in a queue
     """
 
-    def __init__(self, queue: TransactionQueue | None = None):
+    # Exchange rates relative to USD (base currency)
+    _EXCHANGE_RATES: ClassVar[dict[str, Decimal]] = {
+        "USD": Decimal("1.0000"),
+        "EUR": Decimal("0.9200"),
+        "RUB": Decimal("90.5000"),
+        "KZT": Decimal("500.0000"),
+        "CNY": Decimal("7.2000"),
+    }
+
+    # Fee rates by transaction type (as a fraction of amount)
+    _FEE_RATES: ClassVar[dict[TransactionType, Decimal]] = {
+        TransactionType.TRANSFER: Decimal("0.01"),
+        TransactionType.PAYMENT: Decimal("0.005"),
+        TransactionType.WITHDRAWAL: Decimal("0.002"),
+        TransactionType.DEPOSIT: Decimal("0.00"),
+        TransactionType.REFUND: Decimal("0.00"),
+        TransactionType.FEE: Decimal("0.00"),
+        TransactionType.INTEREST: Decimal("0.00"),
+    }
+
+    def __init__(
+        self,
+        queue: TransactionQueue | None = None,
+        max_retries: int = 3,
+    ):
         self._queue = queue or TransactionQueue()
         self._retry_counts: dict[str, int] = {}
-        self._max_retries = 3
+        self._max_retries = max_retries
+        self._error_log: list[dict] = []
+        self._logger = transaction_logger
 
     @property
     def queue(self) -> TransactionQueue:
         return self._queue
 
-    def calculate_fee(self, transaction: Transaction) -> Decimal:
-        """Calculate fee for a transaction based on type and amount."""
-        fee_rates = {
-            TransactionType.TRANSFER: Decimal("0.01"),  # 1%
-            TransactionType.PAYMENT: Decimal("0.005"),  # 0.5%
-            TransactionType.WITHDRAWAL: Decimal("0.002"),  # 0.2%
-            TransactionType.DEPOSIT: Decimal("0.00"),  # Free
-            TransactionType.REFUND: Decimal("0.00"),  # Free
-        }
-        rate = fee_rates.get(transaction.type, Decimal("0.01"))
-        return (transaction.amount * rate).quantize(Decimal("0.01"))
+    @property
+    def max_retries(self) -> int:
+        return self._max_retries
 
+    @max_retries.setter
+    def max_retries(self, value: int) -> None:
+        if value < 0:
+            raise InvalidOperationError("Max retries cannot be negative.")
+        self._max_retries = value
+
+    @property
+    def error_log(self) -> list[dict]:
+        return list(self._error_log)
+
+    # Fee calculation
+    def calculate_fee(self, transaction: Transaction) -> Decimal:
+        """
+        Calculate fee for a transaction based on type and amount.
+
+        Args:
+            transaction: Transaction to calculate fee for
+
+        Returns:
+            Calculated fee amount quantized to 2 decimal places
+        """
+        rate = self._FEE_RATES.get(transaction.type, Decimal("0.01"))
+        fee = (transaction.amount * rate).quantize(Decimal("0.01"))
+        return fee
+
+    def apply_fee(self, transaction: Transaction) -> Decimal:
+        """
+        Calculate and apply fee to a transaction.
+
+        Args:
+            transaction: Transaction to apply fee to
+
+        Returns:
+            The fee amount that was applied
+        """
+        fee = self.calculate_fee(transaction)
+        transaction._fee = fee
+        return fee
+
+    # Currency conversion
     def convert_currency(
         self, amount: Decimal, from_currency: str, to_currency: str
     ) -> Decimal:
-        """Convert amount between currencies."""
-        # Stub implementation - to be expanded with real exchange rates
-        if from_currency == to_currency:
-            return amount
-        # Placeholder: 1:1 conversion for now
-        return amount
-
-    def process(self, transaction: Transaction) -> bool:
         """
-        Process a single transaction.
+        Convert amount between currencies using exchange rates.
+
+        Conversion is performed via USD as the base currency:
+            amount -> USD -> target_currency
+
+        Args:
+            amount: Amount to convert
+            from_currency: Source currency code (e.g., "RUB")
+            to_currency: Target currency code (e.g., "USD")
 
         Returns:
-            True if successful, False if failed
+            Converted amount quantized to 2 decimal places
+
+        Raises:
+            InvalidOperationError: If either currency is unsupported
         """
-        # Stub implementation
-        transaction._set_status(TransactionStatus.PROCESSING)
-        # ... processing logic would go here
-        transaction._set_status(TransactionStatus.COMPLETED)
-        return True
+        from_currency = from_currency.upper().strip()
+        to_currency = to_currency.upper().strip()
 
-    def retry_failed(self, transaction: Transaction) -> bool:
-        """Retry a failed transaction."""
-        count = self._retry_counts.get(transaction.id, 0)
-        if count >= self._max_retries:
-            return False
-        self._retry_counts[transaction.id] = count + 1
-        transaction._set_status(TransactionStatus.PENDING)
-        self._queue.add(transaction, TransactionPriority.HIGH)
-        return True
+        if from_currency == to_currency:
+            return amount
 
-    def log_error(self, transaction: Transaction, error: Exception) -> None:
-        """Log transaction processing error."""
-        print(f"ERROR processing {transaction.id}: {error}")
+        if from_currency not in self._EXCHANGE_RATES:
+            raise InvalidOperationError(
+                f"Unsupported source currency: {from_currency}"
+            )
+        if to_currency not in self._EXCHANGE_RATES:
+            raise InvalidOperationError(
+                f"Unsupported target currency: {to_currency}"
+            )
+
+        usd_amount = amount / self._EXCHANGE_RATES[from_currency]
+        converted = usd_amount * self._EXCHANGE_RATES[to_currency]
+        return converted.quantize(Decimal("0.01"))
+
+    def set_exchange_rate(self, currency: str, rate: Decimal) -> None:
+        """
+        Set or update exchange rate for a currency relative to USD.
+
+        Args:
+            currency: Currency code (e.g., "EUR")
+            rate: Exchange rate relative to USD (must be positive)
+
+        Raises:
+            InvalidOperationError: If rate is not positive
+        """
+        currency = currency.upper().strip()
+        if rate <= 0:
+            raise InvalidOperationError("Exchange rate must be positive.")
+        self._EXCHANGE_RATES[currency] = rate
+
+    def get_exchange_rate(self, currency: str) -> Decimal | None:
+        """
+        Get the exchange rate for a currency relative to USD.
+
+        Args:
+            currency: Currency code
+
+        Returns:
+            Exchange rate or None if currency is not registered
+        """
+        return self._EXCHANGE_RATES.get(currency.upper().strip())
+
+    
