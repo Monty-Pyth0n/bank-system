@@ -1,13 +1,18 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
 from heapq import heappop, heappush
 from typing import ClassVar
 from uuid import uuid4
 
-from ..exceptions import InvalidOperationError, TransactionFailedError
+from ..exceptions import (
+    AccountFrozenError,
+    InvalidOperationError,
+    TransactionFailedError,
+)
 from ..logging import transaction_logger
 from ..utils import validate_amount, validate_currency
+from .accounts import BankAccount, AccountStatus, PremiumAccount
 
 # ======================================
 # Day 4: Transaction System
@@ -433,12 +438,19 @@ class TransactionProcessor:
         TransactionType.INTEREST: Decimal("0.00"),
     }
 
+    # Flat fee for transfers to recipients outside the bank (external transfers)
+    _EXTERNAL_TRANSFER_FEE: ClassVar[Decimal] = Decimal("25.00")
+
     def __init__(
         self,
         queue: TransactionQueue | None = None,
         max_retries: int = 3,
+        accounts: dict[str, BankAccount] | None = None,
     ):
         self._queue = queue or TransactionQueue()
+        # Account registry (account_number -> account) used to enforce
+        # bank business rules during processing.
+        self._accounts = accounts or {}
         self._retry_counts: dict[str, int] = {}
         self._max_retries = max_retries
         self._error_log: list[dict] = []
@@ -447,6 +459,11 @@ class TransactionProcessor:
     @property
     def queue(self) -> TransactionQueue:
         return self._queue
+
+    @property
+    def accounts(self) -> dict[str, BankAccount]:
+        """Return the account registry used for business rule validation."""
+        return self._accounts
 
     @property
     def max_retries(self) -> int:
@@ -481,6 +498,9 @@ class TransactionProcessor:
         """
         Calculate and apply fee to a transaction.
 
+        External transfers (the recipient is not a known account of the
+        bank) are charged an additional flat external transfer fee.
+
         Args:
             transaction: Transaction to apply fee to
 
@@ -488,6 +508,15 @@ class TransactionProcessor:
             The fee amount that was applied
         """
         fee = self.calculate_fee(transaction)
+
+        # Rule: charge a fee for external transfers
+        if (
+            transaction.type == TransactionType.TRANSFER
+            and transaction.recipient
+            and transaction.recipient not in self._accounts
+        ):
+            fee = fee + self._EXTERNAL_TRANSFER_FEE
+
         transaction._fee = fee
         return fee
 
@@ -559,18 +588,75 @@ class TransactionProcessor:
         """
         return self._EXCHANGE_RATES.get(currency.upper().strip())
 
-    # ------------------------------------------------------------------
+    # Business rules validation
+    def _validate_business_rules(self, transaction: Transaction) -> None:
+        """
+        Validate bank business rules before a transaction is processed.
+
+        Rules enforced:
+            1. Transactions on frozen accounts are prohibited.
+            2. Transfers (TRANSFER/PAYMENT) from an account with a
+               negative balance are prohibited, unless the sender is a
+               premium account (overdraft facility).
+            3. External transfers (recipient is not a known account of
+               the bank) incur an additional flat fee (applied in
+               ``apply_fee``).
+
+        Args:
+            transaction: Transaction to validate.
+
+        Raises:
+            AccountFrozenError: If the sender or recipient account is frozen.
+            InvalidOperationError: If a transfer from a negative-balance,
+                non-premium account is attempted.
+        """
+        sender = (
+            self._accounts.get(transaction.sender)
+            if transaction.sender
+            else None
+        )
+        recipient = (
+            self._accounts.get(transaction.recipient)
+            if transaction.recipient
+            else None
+        )
+
+        # Rule: no transactions on frozen accounts.
+        for account, role in ((sender, "sender"), (recipient, "recipient")):
+            if account is not None and account.status == AccountStatus.FROZEN:
+                raise AccountFrozenError(
+                    f"Transaction prohibited: {role} account "
+                    f"{account.account_number} is frozen."
+                )
+
+        # Rule: transfers from a negative balance are prohibited unless
+        # the sender is a premium account (overdraft facility).
+        if transaction.type in (
+            TransactionType.TRANSFER,
+            TransactionType.PAYMENT,
+        ) and (
+            sender is not None
+            and sender.balance < 0
+            and not isinstance(sender, PremiumAccount)
+        ):
+            raise InvalidOperationError(
+                f"Transfer prohibited: sender account "
+                f"{sender.account_number} has a negative balance "
+                f"({sender.balance})."
+            )
+
     # Transaction processing
-    # ------------------------------------------------------------------
     def process(self, transaction: Transaction) -> bool:
         """
         Process a single transaction through its lifecycle.
 
         Steps:
         1. Reject if transaction is already in a final state
-        2. Set status to PROCESSING
-        3. Calculate and apply fee
-        4. Mark as COMPLETED on success or FAILED on error
+        2. Validate bank business rules (frozen accounts, negative-balance
+           transfers, etc.)
+        3. Set status to PROCESSING
+        4. Calculate and apply fee
+        5. Mark as COMPLETED on success or FAILED on error
 
         Args:
             transaction: Transaction to process
@@ -589,6 +675,8 @@ class TransactionProcessor:
             return False
 
         try:
+            self._validate_business_rules(transaction)
+
             transaction._set_status(TransactionStatus.PROCESSING)
 
             self.apply_fee(transaction)
@@ -596,7 +684,11 @@ class TransactionProcessor:
             transaction._set_status(TransactionStatus.COMPLETED)
             return True
 
-        except (InvalidOperationError, TransactionFailedError) as e:
+        except (
+            InvalidOperationError,
+            TransactionFailedError,
+            AccountFrozenError,
+        ) as e:
             transaction._set_status(TransactionStatus.FAILED, failure_reason=str(e))
             self.log_error(transaction, e)
             return False
