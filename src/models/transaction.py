@@ -373,6 +373,13 @@ class TransactionQueue:
                 return True
         return False
 
+    def get_priority(self, transaction_id: str) -> TransactionPriority | None:
+        """Return current queue priority for a transaction, or None if not found."""
+        for priority, _, txn in self._queue:
+            if txn.id == transaction_id:
+                return TransactionPriority(-priority)
+        return None
+
     def peek(self) -> Transaction | None:
         """View the next transaction without removing it."""
         self._process_scheduled()
