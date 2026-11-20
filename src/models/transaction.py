@@ -12,7 +12,7 @@ from ..exceptions import (
 )
 from ..logging import transaction_logger
 from ..utils import validate_amount, validate_currency
-from .accounts import BankAccount, AccountStatus, PremiumAccount
+from .accounts import AccountStatus, BankAccount, PremiumAccount
 
 # ======================================
 # Day 4: Transaction System
@@ -359,10 +359,12 @@ class TransactionQueue:
         Returns:
             True if transaction was found and priority updated, False otherwise
         """
-        # Find and cancel the old entry
+        # Find and re-add the old entry with updated priority.
+        # The old entry remains in the heap but will be skipped on
+        # retrieval because the transaction will already be finalized
+        # after processing, or simply superseded by the new entry.
         for i, (_, _, txn) in enumerate(self._queue):
             if txn.id == transaction_id:
-                self._cancelled_ids.add(transaction_id)
                 # Re-add with new priority
                 heappush(self._queue, (-priority.value, self._sequence, txn))
                 self._sequence += 1
