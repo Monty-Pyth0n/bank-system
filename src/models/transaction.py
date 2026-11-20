@@ -62,7 +62,7 @@ class Transaction:
     def __init__(
         self,
         type: TransactionType,
-        amount: Decimal,
+        amount: Decimal | int,
         currency: str,
         sender: str | None = None,
         recipient: str | None = None,

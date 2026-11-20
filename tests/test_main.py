@@ -24,11 +24,11 @@ from src.models import (
 )
 from src.models.transaction import (
     Transaction,
-    TransactionType,
-    TransactionStatus,
     TransactionPriority,
-    TransactionQueue,
     TransactionProcessor,
+    TransactionQueue,
+    TransactionStatus,
+    TransactionType,
 )
 
 
