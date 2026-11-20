@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from heapq import heappop, heappush
+from heapq import heapify, heappop, heappush
 from typing import ClassVar
 from uuid import uuid4
 
@@ -349,8 +349,8 @@ class TransactionQueue:
         """
         Change priority of a transaction in the queue.
 
-        Note: Since heap doesn't support efficient update, we mark old entry
-        as cancelled and add a new one with updated priority.
+        Note: since a heap doesn't support efficient in-place update, the old
+        entry is removed and re-inserted with the new priority (O(n) rebuild).
 
         Args:
             transaction_id: ID of transaction to update
@@ -359,22 +359,17 @@ class TransactionQueue:
         Returns:
             True if transaction was found and priority updated, False otherwise
         """
-        # Find and re-add the old entry with updated priority.
-        # Mark the old entry as cancelled so it will be skipped when
-        # popped, then add a new entry with the updated priority.
+
         for i, (_, _, txn) in enumerate(self._queue):
             if txn.id == transaction_id:
-                # Mark old entry as cancelled
-                self._cancelled_ids.add(transaction_id)
+                # Drop the stale entry, then restore heap invariant.
+                del self._queue[i]
+                heapify(self._queue)
 
-                # Re-add with new priority directly via heappush.
-                # We do not use self.add() because it would discard
-                # the transaction from _cancelled_ids.
+                # Re-insert with the new priority
                 heappush(self._queue, (-priority.value, self._sequence, txn))
                 self._sequence += 1
 
-                # Remove from cancelled_ids so the new entry is not skipped.
-                self._cancelled_ids.discard(transaction_id)
                 return True
         return False
 
@@ -388,7 +383,6 @@ class TransactionQueue:
 
     def size(self) -> int:
         """Return number of pending transactions in queue."""
-        self._process_scheduled()
         return sum(1 for _, _, txn in self._queue if txn.id not in self._cancelled_ids)
 
     def is_empty(self) -> bool:
