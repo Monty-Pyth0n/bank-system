@@ -360,14 +360,21 @@ class TransactionQueue:
             True if transaction was found and priority updated, False otherwise
         """
         # Find and re-add the old entry with updated priority.
-        # The old entry remains in the heap but will be skipped on
-        # retrieval because the transaction will already be finalized
-        # after processing, or simply superseded by the new entry.
+        # Mark the old entry as cancelled so it will be skipped when
+        # popped, then add a new entry with the updated priority.
         for i, (_, _, txn) in enumerate(self._queue):
             if txn.id == transaction_id:
-                # Re-add with new priority
+                # Mark old entry as cancelled
+                self._cancelled_ids.add(transaction_id)
+
+                # Re-add with new priority directly via heappush.
+                # We do not use self.add() because it would discard
+                # the transaction from _cancelled_ids.
                 heappush(self._queue, (-priority.value, self._sequence, txn))
                 self._sequence += 1
+
+                # Remove from cancelled_ids so the new entry is not skipped.
+                self._cancelled_ids.discard(transaction_id)
                 return True
         return False
 
