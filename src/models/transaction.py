@@ -391,10 +391,17 @@ class TransactionQueue:
 
     def size(self) -> int:
         """Return number of pending transactions in queue."""
+        self._process_scheduled()
         return sum(1 for _, _, txn in self._queue if txn.id not in self._cancelled_ids)
 
     def is_empty(self) -> bool:
-        """Check if queue has no pending transactions."""
+        """Check if queue has no pending transactions.
+
+        Scheduled transactions whose due time has arrived are moved to the
+        active queue first, so they are not mistakenly reported as empty
+        and left unprocessed by :meth:`TransactionProcessor.process_queue`.
+        """
+        self._process_scheduled()
         return self.size() == 0
 
     def get_scheduled_count(self) -> int:
@@ -741,13 +748,13 @@ class TransactionProcessor:
             else None
         )
 
-        debit_amount = Decimal("0")
-        credit_amount = Decimal("0")
+        debit_amount = Decimal("0.00")
+        credit_amount = Decimal("0.00")
         do_debit = False
         do_credit = False
         credit_target = None
 
-        # --- Determine the sender debit ---------------------------------
+        # Determine the sender debit
         if transaction.type in (
             TransactionType.WITHDRAWAL,
             TransactionType.TRANSFER,
@@ -765,7 +772,7 @@ class TransactionProcessor:
                 )
             do_debit = True
 
-        # --- Determine the recipient credit -----------------------------
+        # Determine the recipient credit
         if transaction.type in (
             TransactionType.DEPOSIT,
             TransactionType.TRANSFER,
@@ -797,8 +804,8 @@ class TransactionProcessor:
                     )
                 do_credit = True
 
-        # --- Validate sufficient funds before mutating any balance ------
-        if do_debit:
+        # Validate sufficient funds before mutating any balance
+        if sender is not None and do_debit:
             available = sender.balance
             if isinstance(sender, PremiumAccount):
                 available += sender.overdraft_limit
@@ -810,10 +817,10 @@ class TransactionProcessor:
                     f"{sender.currency}."
                 )
 
-        # --- Apply the movement -----------------------------------------
-        if do_debit:
+        # Apply the movement 
+        if sender is not None and do_debit:
             sender._balance -= debit_amount
-        if do_credit:
+        if credit_target is not None and do_credit:
             credit_target._balance += credit_amount
 
     def process_queue(self) -> dict[str, int]:
