@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from ..exceptions import (
     AccountFrozenError,
+    InsufficientFundsError,
     InvalidOperationError,
     TransactionFailedError,
 )
@@ -666,7 +667,10 @@ class TransactionProcessor:
            transfers, etc.)
         3. Set status to PROCESSING
         4. Calculate and apply fee
-        5. Mark as COMPLETED on success or FAILED on error
+        5. Debit/credit the involved accounts (sufficient funds are checked
+           and currency conversion is applied when account and transaction
+           currencies differ)
+        6. Mark as COMPLETED on success or FAILED on error
 
         Args:
             transaction: Transaction to process
@@ -689,7 +693,9 @@ class TransactionProcessor:
 
             transaction._set_status(TransactionStatus.PROCESSING)
 
-            self.apply_fee(transaction)
+            fee = self.apply_fee(transaction)
+
+            self._execute_transaction(transaction, fee)
 
             transaction._set_status(TransactionStatus.COMPLETED)
             return True
@@ -698,10 +704,117 @@ class TransactionProcessor:
             InvalidOperationError,
             TransactionFailedError,
             AccountFrozenError,
+            InsufficientFundsError,
         ) as e:
             transaction._set_status(TransactionStatus.FAILED, failure_reason=str(e))
             self.log_error(transaction, e)
             return False
+
+    def _execute_transaction(self, transaction: Transaction, fee: Decimal) -> None:
+        """
+        Move funds between the accounts involved in a transaction.
+
+        The sender is debited the amount plus the transaction fee (for
+        withdrawals, transfers and payments); the recipient is credited the
+        amount (for deposits, transfers, payments and refunds). Amounts are
+        converted to the account currency when it differs from the
+        transaction currency. Sufficient funds are verified before any
+        balance is changed, so a failure leaves all balances untouched.
+
+        Args:
+            transaction: Transaction being executed
+            fee: Transaction fee already applied to the transaction
+
+        Raises:
+            InvalidOperationError: If a required account is not registered
+                with the processor
+            InsufficientFundsError: If the sender cannot cover the debit
+        """
+        sender = (
+            self._accounts.get(transaction.sender)
+            if transaction.sender
+            else None
+        )
+        recipient = (
+            self._accounts.get(transaction.recipient)
+            if transaction.recipient
+            else None
+        )
+
+        debit_amount = Decimal("0")
+        credit_amount = Decimal("0")
+        do_debit = False
+        do_credit = False
+        credit_target = None
+
+        # --- Determine the sender debit ---------------------------------
+        if transaction.type in (
+            TransactionType.WITHDRAWAL,
+            TransactionType.TRANSFER,
+            TransactionType.PAYMENT,
+        ):
+            if sender is None:
+                raise InvalidOperationError(
+                    f"Sender account {transaction.sender!r} is not registered "
+                    "with the transaction processor."
+                )
+            debit_amount = transaction.amount + fee
+            if sender.currency != transaction.currency:
+                debit_amount = self.convert_currency(
+                    debit_amount, transaction.currency, sender.currency
+                )
+            do_debit = True
+
+        # --- Determine the recipient credit -----------------------------
+        if transaction.type in (
+            TransactionType.DEPOSIT,
+            TransactionType.TRANSFER,
+            TransactionType.PAYMENT,
+            TransactionType.REFUND,
+        ):
+            credit_target = recipient
+            if (
+                transaction.type == TransactionType.REFUND
+                and credit_target is None
+                and sender is not None
+            ):
+                # A refund without a recipient goes back to the sender.
+                credit_target = sender
+            if credit_target is None:
+                if transaction.type == TransactionType.DEPOSIT:
+                    raise InvalidOperationError(
+                        f"Recipient account {transaction.recipient!r} is not "
+                        "registered with the transaction processor."
+                    )
+                # External recipient (e.g. external transfer): nothing to credit.
+            else:
+                credit_amount = transaction.amount
+                if credit_target.currency != transaction.currency:
+                    credit_amount = self.convert_currency(
+                        transaction.amount,
+                        transaction.currency,
+                        credit_target.currency,
+                    )
+                do_credit = True
+
+        # --- Validate sufficient funds before mutating any balance ------
+        if do_debit:
+            available = sender.balance
+            if isinstance(sender, PremiumAccount):
+                available += sender.overdraft_limit
+            if available < debit_amount:
+                raise InsufficientFundsError(
+                    f"Insufficient funds on sender account "
+                    f"{sender.account_number}: available {available} "
+                    f"{sender.currency}, required {debit_amount} "
+                    f"{sender.currency}."
+                )
+
+        # --- Apply the movement -----------------------------------------
+        if do_debit:
+            sender._balance -= debit_amount
+        if do_credit:
+            credit_target._balance += credit_amount
 
     def process_queue(self) -> dict[str, int]:
         """

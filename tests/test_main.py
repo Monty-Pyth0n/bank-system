@@ -1592,3 +1592,97 @@ def test_processor_error_log(txn_processor):
     assert len(proc.error_log) == 1
     assert proc.error_log[0]["transaction_id"] == txn.id
     assert proc.error_log[0]["error_type"] == "AccountFrozenError"
+
+
+def test_processor_transfer_debits_sender_and_credits_recipient(txn_processor):
+    proc, acc_active, _, acc_premium = txn_processor
+    acc_active._balance = Decimal("1000.00")
+    acc_premium._balance = Decimal("0.00")
+    txn = Transaction(
+        type=TransactionType.TRANSFER,
+        amount=Decimal("100.00"),
+        currency="RUB",
+        sender=acc_active.account_number,
+        recipient=acc_premium.account_number,
+    )
+    result = proc.process(txn)
+    assert result is True
+    assert txn.status == TransactionStatus.COMPLETED
+    assert txn.fee == Decimal("1.00")
+    # Sender debited amount + fee, recipient credited the amount.
+    assert acc_active.balance == Decimal("899.00")
+    assert acc_premium.balance == Decimal("100.00")
+
+
+def test_processor_transfer_insufficient_funds_fails(txn_processor):
+    proc, acc_active, _, acc_premium = txn_processor
+    acc_active._balance = Decimal("100.00")
+    acc_premium._balance = Decimal("0.00")
+    txn = Transaction(
+        type=TransactionType.TRANSFER,
+        amount=Decimal("1000.00"),
+        currency="RUB",
+        sender=acc_active.account_number,
+        recipient=acc_premium.account_number,
+    )
+    result = proc.process(txn)
+    assert result is False
+    assert txn.status == TransactionStatus.FAILED
+    assert txn.failure_reason is not None
+    # Balances must remain untouched on failure.
+    assert acc_active.balance == Decimal("100.00")
+    assert acc_premium.balance == Decimal("0.00")
+
+
+def test_processor_deposit_credits_recipient(txn_processor):
+    proc, acc_active, _, _ = txn_processor
+    acc_active._balance = Decimal("1000.00")
+    txn = Transaction(
+        type=TransactionType.DEPOSIT,
+        amount=Decimal("250.00"),
+        currency="RUB",
+        recipient=acc_active.account_number,
+    )
+    result = proc.process(txn)
+    assert result is True
+    assert txn.status == TransactionStatus.COMPLETED
+    assert txn.fee == Decimal("0.00")
+    assert acc_active.balance == Decimal("1250.00")
+
+
+def test_processor_withdrawal_debits_sender(txn_processor):
+    proc, acc_active, _, _ = txn_processor
+    acc_active._balance = Decimal("1000.00")
+    txn = Transaction(
+        type=TransactionType.WITHDRAWAL,
+        amount=Decimal("100.00"),
+        currency="RUB",
+        sender=acc_active.account_number,
+    )
+    result = proc.process(txn)
+    assert result is True
+    assert txn.status == TransactionStatus.COMPLETED
+    # Fee is 0.2% of 100 = 0.20; sender debited amount + fee.
+    assert txn.fee == Decimal("0.20")
+    assert acc_active.balance == Decimal("899.80")
+
+
+def test_processor_transfer_cross_currency_conversion(txn_processor):
+    proc, acc_active, _, _ = txn_processor
+    acc_usd = BankAccount(owner="Alex", balance=Decimal("1000.00"), currency="USD")
+    proc.accounts[acc_usd.account_number] = acc_usd
+    acc_active._balance = Decimal("10000.00")  # RUB
+    txn = Transaction(
+        type=TransactionType.TRANSFER,
+        amount=Decimal("100.00"),
+        currency="RUB",
+        sender=acc_active.account_number,
+        recipient=acc_usd.account_number,
+    )
+    result = proc.process(txn)
+    assert result is True
+    assert txn.status == TransactionStatus.COMPLETED
+    # Sender debited 100 RUB + 1 RUB fee (no conversion, same currency).
+    assert acc_active.balance == Decimal("9899.00")
+    # Recipient credited 100 RUB converted to USD: 100 / 90.5 * 1 = 1.10 USD.
+    assert acc_usd.balance == Decimal("1001.10")
