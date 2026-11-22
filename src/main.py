@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
+from time import sleep
 from unittest.mock import patch
 
 from src.exceptions import (
@@ -22,7 +23,6 @@ from src.models.transaction import (
     Transaction,
     TransactionPriority,
     TransactionProcessor,
-    TransactionStatus,
     TransactionType,
 )
 
@@ -502,11 +502,13 @@ def main():
             currency="RUB",
             recipient=ivan_savings.account_number,
         )
-        future_time = datetime.now() + timedelta(hours=1)
+        future_time = datetime.now() + timedelta(seconds=2)
         queue.add_scheduled(future_txn, future_time)
-        print("\nAfter add_scheduled transaction (future):")
+        print("\nAfter add_scheduled transaction ():")
+        print(f"  scheduled transaction time: after {future_time.second} seconds")
         print(f"  queue.get_scheduled_count(): {queue.get_scheduled_count()}")
         print(f"  scheduled transactions: {queue._scheduled}")
+        
 
         # Cancel a transaction from the queue
         txn_to_cancel = queue.peek()
@@ -586,6 +588,11 @@ def main():
         print(f"\n  After clear_retry_count(): count={processor.get_retry_count(frozen_txn.id)}")
 
         print("\n=== TransactionProcessor process queue ===")
+        s=2
+        print(f"  queue.size(): {queue.size()}")
+        print(f"--- Wait {s} seconds to allow the scheduled transactions time to enter the queue")
+        sleep(s)    # waiting
+        print(f"  queue.size(): {queue.size()}")
         # Process all transactions
         stats = processor.process_queue()
         print("\n--- Processing results ---")
@@ -600,6 +607,7 @@ def main():
                 print(
                     f"  [{entry['transaction_id'][:8]}...] {entry['error_type']}: {entry['error']}"
                 )
+        print(f"  queue.size(): {queue.size()}")
 
 
 if __name__ == "__main__":
