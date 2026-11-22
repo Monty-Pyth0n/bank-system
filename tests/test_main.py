@@ -1297,6 +1297,65 @@ def test_queue_scheduled_past():
     assert queue.get_next() is t1
 
 
+def test_queue_is_empty_considers_due_scheduled():
+    """Due scheduled transactions must not make the queue appear empty."""
+    from datetime import timedelta
+    queue = TransactionQueue()
+    t1 = Transaction(type=TransactionType.DEPOSIT, amount=Decimal(10), currency="RUB", recipient="A")
+    past = datetime.now() - timedelta(hours=1)
+
+    # Simulate a transaction scheduled earlier that has since matured while
+    # still sitting in _scheduled (add_scheduled with a past time would put it
+    # straight into _queue, so we insert directly to reproduce the stuck case).
+    queue._scheduled[t1.id] = (past, t1, TransactionPriority.NORMAL)
+
+    assert queue.get_scheduled_count() == 1
+    assert queue.is_empty() is False
+    assert queue.get_next() is t1
+    assert queue.get_scheduled_count() == 0
+    assert queue.is_empty() is True
+
+
+def test_queue_future_scheduled_still_empty():
+    """A not-yet-due scheduled transaction must keep the queue empty."""
+    from datetime import timedelta
+    queue = TransactionQueue()
+    t1 = Transaction(type=TransactionType.DEPOSIT, amount=Decimal(10), currency="RUB", recipient="A")
+    future = datetime.now() + timedelta(hours=1)
+
+    queue._scheduled[t1.id] = (future, t1, TransactionPriority.NORMAL)
+
+    assert queue.get_scheduled_count() == 1
+    assert queue.is_empty() is True
+    assert queue.get_next() is None
+
+
+def test_processor_process_queue_processes_due_scheduled(txn_processor):
+    """process_queue() must process scheduled transactions that have matured."""
+    from datetime import timedelta
+
+    proc, acc_active, _, _ = txn_processor
+    t1 = Transaction(
+        type=TransactionType.DEPOSIT,
+        amount=Decimal("100.00"),
+        currency="RUB",
+        recipient=acc_active.account_number,
+    )
+    past = datetime.now() - timedelta(hours=1)
+    proc.queue._scheduled[t1.id] = (past, t1, TransactionPriority.NORMAL)
+
+    assert proc.queue.get_scheduled_count() == 1
+    assert proc.queue.is_empty() is False
+
+    stats = proc.process_queue()
+    assert stats["completed"] == 1
+    assert stats["failed"] == 0
+    assert stats["skipped"] == 0
+    assert t1.is_successful() is True
+    assert proc.queue.is_empty() is True
+    assert proc.queue.get_scheduled_count() == 0
+
+
 def test_queue_clear_cancelled():
     queue = TransactionQueue()
     t1 = Transaction(type=TransactionType.DEPOSIT, amount=Decimal(10), currency="RUB", recipient="A")
