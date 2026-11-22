@@ -17,6 +17,11 @@ from .accounts import (
     PremiumAccount,
     SavingsAccount,
 )
+from .audit_log import (
+    AuditLog,
+    AuditLogEntry,
+    SeverityLevel,
+)
 from .bank import Bank
 from .client import Client, ClientStatus
 from .transaction import (
@@ -28,31 +33,34 @@ from .transaction import (
     TransactionType,
 )
 
-__all__ = [  # noqa: RUF022
-    "Client",
-    "ClientStatus",
-    "Bank",
-    "AccountStatus",
+__all__ = [  
     "AbstractAccount",
-    "BankAccount",
-    "SavingsAccount",
-    "PremiumAccount",
-    "InvestmentAccount",
-    "Transaction",
-    "TransactionType",
-    "TransactionStatus",
-    "TransactionPriority",
-    "TransactionQueue",
-    "TransactionProcessor",
-    "AccountFrozenError",
     "AccountClosedError",
-    "InvalidOperationError",
-    "InsufficientFundsError",
+    "AccountFrozenError",
+    "AccountStatus",
+    "AuditLog",
+    "AuditLogEntry",
+    "Bank",
+    "BankAccount",
+    "Client",
     "ClientLockedError",
-    "TransactionProhibitedError",
+    "ClientStatus",
+    "InsufficientFundsError",
+    "InvalidOperationError",
+    "InvestmentAccount",
+    "PremiumAccount",
+    "SavingsAccount",
+    "SeverityLevel",
+    "Transaction",
     "TransactionFailedError",
+    "TransactionPriority",
+    "TransactionProcessor",
+    "TransactionProhibitedError",
+    "TransactionQueue",
+    "TransactionStatus",
+    "TransactionType",
+    "build_account_table",
+    "generate_account_number",
     "security_logger",
     "transaction_logger",
-    "generate_account_number",
-    "build_account_table",
 ]
