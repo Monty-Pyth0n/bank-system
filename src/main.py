@@ -25,6 +25,7 @@ from src.models.transaction import (
     TransactionProcessor,
     TransactionType,
 )
+from src.services import AuditLog, RiskAnalyzer, RiskLevel
 
 
 def main():
@@ -608,6 +609,142 @@ def main():
                     f"  [{entry['transaction_id'][:8]}...] {entry['error_type']}: {entry['error']}"
                 )
         print(f"  queue.size(): {queue.size()}")
+
+        print("\n===============================")
+        print("=== Audit and Risk Analysis ===")
+        print("===============================")
+
+        # Create audit log and risk analyzer
+        audit_log = AuditLog()
+        analyzer = RiskAnalyzer(audit_log=audit_log)
+
+        # Register known recipients (bank's internal accounts)
+        analyzer.register_known_recipient(ivan_bank.account_number)
+        analyzer.register_known_recipient(ivan_savings.account_number)
+        analyzer.register_known_recipient(anna_premium.account_number)
+        analyzer.register_known_recipient(alex_invest.account_number)
+
+        # Create a set of normal and suspicious transactions
+        risk_txns = [
+            # Normal: small daytime transfer to known account
+            Transaction(
+                type=TransactionType.TRANSFER,
+                amount=Decimal("5000.00"),
+                currency="RUB",
+                sender=ivan_bank.account_number,
+                recipient=anna_premium.account_number,
+                transaction_id="RISK_TXN_001",
+            ),
+            # Normal: small deposit
+            Transaction(
+                type=TransactionType.DEPOSIT,
+                amount=Decimal("3000.00"),
+                currency="RUB",
+                recipient=ivan_savings.account_number,
+                transaction_id="RISK_TXN_002",
+            ),
+            # Suspicious: large amount (>= 100,000)
+            Transaction(
+                type=TransactionType.TRANSFER,
+                amount=Decimal("150000.00"),
+                currency="RUB",
+                sender=ivan_bank.account_number,
+                recipient=alex_invest.account_number,
+                transaction_id="RISK_TXN_003",
+            ),
+            # Suspicious: night transaction
+            Transaction(
+                type=TransactionType.TRANSFER,
+                amount=Decimal("40000.00"),
+                currency="RUB",
+                sender=ivan_bank.account_number,
+                recipient=anna_premium.account_number,
+                transaction_id="RISK_TXN_004",
+            ),
+            # Suspicious: transfer to new/unknown account
+            Transaction(
+                type=TransactionType.TRANSFER,
+                amount=Decimal("25000.00"),
+                currency="RUB",
+                sender=ivan_bank.account_number,
+                recipient="UNKNOWN_ACC_999",
+                transaction_id="RISK_TXN_005",
+            ),
+            # Highly suspicious: large amount + night + new account
+            Transaction(
+                type=TransactionType.TRANSFER,
+                amount=Decimal("500000.00"),
+                currency="RUB",
+                sender=ivan_bank.account_number,
+                recipient="FOREIGN_ACC_888",
+                transaction_id="RISK_TXN_006",
+            ),
+        ]
+
+        # Set explicit timestamps for night transactions
+        risk_txns[3]._created_at = datetime(2024, 1, 1, 23, 0, 0)  # 23:00 night
+        risk_txns[5]._created_at = datetime(2024, 1, 1, 3, 0, 0)   # 03:00 night
+
+        # Analyze all transactions
+        print("\n--- Analyzing transactions for risk ---")
+        analysis_results = []
+        for txn in risk_txns:
+            level = analyzer.analyze_transaction(txn, client_id="CL001")
+            analysis_results.append((txn, level))
+            blocked = " [BLOCKED]" if level == RiskLevel.HIGH else ""
+            print(
+                f"  {txn.id}: {txn.amount} {txn.currency} -> {level.value}{blocked}"
+            )
+
+        # Show blocked transactions
+        blocked_txns = analyzer.get_blocked_transactions()
+        print(f"\n--- Blocked transactions ({len(blocked_txns)}) ---")
+        for txn in blocked_txns:
+            print(f"  {txn.id}: {txn.amount} {txn.currency} - BLOCKED")
+
+        # Show risk profile
+        profile = analyzer.get_risk_profile("CL001")
+        print("\n--- Client risk profile (CL001) ---")
+        if profile:
+            print(f"  Overall risk level: {profile['overall_risk_level'].value}")
+            print(f"  Total transactions: {profile['total_transactions']}")
+            print(f"  High risk: {profile['high_risk_count']}")
+            print(f"  Medium risk: {profile['medium_risk_count']}")
+            print(f"  Low risk: {profile['low_risk_count']}")
+            print(f"  Average risk score: {profile['average_risk_score']}")
+
+        # Show statistics
+        stats = analyzer.get_error_statistics()
+        print("\n--- Error statistics ---")
+        print(f"  Total analyzed: {stats['total_analyzed']}")
+        print(f"  High risk: {stats['high_risk']} ({stats['high_risk_percentage']}%)")
+        print(f"  Medium risk: {stats['medium_risk']} ({stats['medium_risk_percentage']}%)")
+        print(f"  Low risk: {stats['low_risk']}")
+        print(f"  Blocked count: {stats['blocked_count']}")
+
+        # Show suspicious transactions
+        suspicious = analyzer.get_suspicious_transactions()
+        print(f"\n--- Suspicious transactions ({len(suspicious)}) ---")
+        for entry in suspicious:
+            print(
+                f"  {entry['transaction_id']}: {entry['risk_level'].value} "
+                f"(score={entry['risk_score']})"
+            )
+
+        # Show full audit report
+        report = analyzer.generate_report()
+        print("\n--- Full audit report ---")
+        print(f"  Sections: {list(report.keys())}")
+        print(f"  Blocked IDs: {report['blocked_transaction_ids']}")
+
+        # Show audit log entries
+        print(f"\n--- Audit log entries ({audit_log.size}) ---")
+        for entry in audit_log.entries:
+            print(
+                f"  {entry.timestamp} [{entry.severity.value.upper()}] {entry.message}"
+            )
+
+        print("\n--- End of Audit and Risk Analysis ---")
 
 
 if __name__ == "__main__":
