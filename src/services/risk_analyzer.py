@@ -4,7 +4,7 @@ from typing import Any
 
 from ..exceptions import InvalidOperationError
 from ..logging import security_logger
-from ..models.transaction import Transaction, TransactionType
+from ..models.transaction import Transaction, TransactionStatus, TransactionType
 from .audit_log import AuditLog, SeverityLevel
 
 # ======================================
@@ -262,6 +262,15 @@ class RiskAnalyzer:
         # Block high-risk transactions
         if level == RiskLevel.HIGH:
             self._blocked_transactions.append(transaction)
+            if not transaction.is_finalized():
+                transaction._set_status(
+                    TransactionStatus.FAILED,
+                    failure_reason=(
+                        f"High risk transaction blocked: {', '.join(reasons)}"
+                        if reasons
+                        else "High risk transaction blocked"
+                    ),
+                )
             security_logger.warning(
                 f"HIGH RISK: Transaction {transaction.id} blocked. "
                 f"Reasons: {', '.join(reasons)}"
@@ -413,7 +422,6 @@ class RiskAnalyzer:
                 profile["reasons"].append(reason)
 
     # dunder methods
-
     def __repr__(self) -> str:
         return (
             f"RiskAnalyzer(analyzed={len(self._transaction_history)}, "

@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
 from heapq import heapify, heappop, heappush
-from typing import ClassVar
+from typing import Any, ClassVar
 from uuid import uuid4
 
 from ..exceptions import (
@@ -464,11 +464,14 @@ class TransactionProcessor:
         queue: TransactionQueue | None = None,
         max_retries: int = 3,
         accounts: dict[str, BankAccount] | None = None,
+        risk_analyzer: Any = None,
     ):
         self._queue = queue or TransactionQueue()
         # Account registry (account_number -> account) used to enforce
         # bank business rules during processing.
         self._accounts = accounts or {}
+        # Optional risk analyzer.
+        self._risk_analyzer = risk_analyzer
         self._retry_counts: dict[str, int] = {}
         self._max_retries = max_retries
         self._error_log: list[dict] = []
@@ -482,6 +485,11 @@ class TransactionProcessor:
     def accounts(self) -> dict[str, BankAccount]:
         """Return the account registry used for business rule validation."""
         return self._accounts
+
+    @property
+    def risk_analyzer(self) -> Any:
+        """Return the optional risk analyzer used to block high-risk transactions."""
+        return self._risk_analyzer
 
     @property
     def max_retries(self) -> int:
@@ -697,6 +705,20 @@ class TransactionProcessor:
 
         try:
             self._validate_business_rules(transaction)
+
+            # High-risk transactions are marked FAILED with a reason
+            if self._risk_analyzer is not None:
+                level = self._risk_analyzer.analyze_transaction(transaction)
+
+                from ..services.risk_analyzer import RiskLevel
+                if level == RiskLevel.HIGH:
+                    self.log_error(
+                        transaction,
+                        InvalidOperationError(
+                            f"Transaction {transaction.id} blocked: high risk"
+                        ),
+                    )
+                    return False
 
             transaction._set_status(TransactionStatus.PROCESSING)
 
