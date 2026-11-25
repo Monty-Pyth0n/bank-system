@@ -48,6 +48,21 @@ class RiskLevel(Enum):
         return self.rank < other.rank
 
 
+class _HistoryEntry:
+    """Lightweight stand-in exposing ``sender``/``recipient``/``created_at``
+    for risk analysis. Wraps entries stored in :attr:`_transaction_history`
+    so frequency and new-recipient checks work without an explicit
+    ``historical_transactions`` argument.
+    """
+
+    __slots__ = ("created_at", "recipient", "sender")
+
+    def __init__(self, sender, recipient, created_at) -> None:
+        self.sender = sender
+        self.recipient = recipient
+        self.created_at = created_at
+
+
 class RiskAnalyzer:
     """Analyzes transactions for suspicious activity and assigns risk levels.
 
@@ -151,7 +166,21 @@ class RiskAnalyzer:
 
         risk_score = 0
         reasons: list[str] = []
-        history = historical_transactions or []
+
+        # Use explicitly passed history when given; otherwise fall back to
+        # the analyzer's own recorded history so repeated operations from the
+        # same sender are detected even without an explicit argument.
+        if historical_transactions is not None:
+            history = list(historical_transactions)
+        else:
+            history = [
+                _HistoryEntry(
+                    sender=e["sender"],
+                    recipient=e["recipient"],
+                    created_at=e["timestamp"],
+                )
+                for e in self._transaction_history
+            ]
 
         # 1. Large amount
         if transaction.amount >= self.LARGE_AMOUNT_THRESHOLD:
