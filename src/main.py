@@ -744,8 +744,590 @@ def main():
                 f"  {entry.timestamp} [{entry.severity.value.upper()}] {entry.message}"
             )
 
-        print("\n--- End of Audit and Risk Analysis ---")
+# Day 6: Demo Program
+def day6_demo():
+    with (
+        patch("src.models.accounts.datetime") as mock_acc_dt,
+        patch("src.models.client.datetime") as mock_dt,
+    ):
+        # Set to 2:00 AM - within prohibited hours (00:00-05:00)
+        freezed_time = datetime(2026, 1, 1, 10, 0, 0)
+        for mock in (mock_dt, mock_acc_dt):
+            mock.now.return_value = freezed_time
+            mock.side_effect = lambda *args, **kw: datetime(*args, **kw)
+
+        print()
+        print("=" * 60)
+        print("           DAY 6: BANK SYSTEM DEMO")
+        print("=" * 60)
+
+        # ================================================================
+        # 1. Initialization
+        # ================================================================
+        print("\n=== 1. INITIALIZATION ===")
+        bank = Bank("Day6 Bank")
+
+        # --- Add clients (5-10) ---
+        print("\n--- Adding clients ---")
+        client_specs = [
+            ("CL001", "Ivan Petrov", "ivan@example.com", 25),
+            ("CL002", "Anna Smirnova", "anna@example.com", 30),
+            ("CL003", "Alex Smith", "alex@example.com", 40),
+            ("CL004", "Maria Kovalenko", "maria@example.com", 28),
+            ("CL005", "Dmitri Volkov", "dmitri@example.com", 35),
+            ("CL006", "Elena Morozova", "elena@example.com", 32),
+        ]
+        for cid, name, email, age in client_specs:
+            bank.add_client(cid, name, email, age)
+        print(f"Added {len(client_specs)} clients")
+
+        # --- Create accounts (10-15) ---
+        print("\n--- Opening accounts ---")
+        ivan_checking = bank.open_account("CL001", "bank", balance=10000)
+        print(
+            f"  {ivan_checking.account_number}: BankAccount for Ivan, balance=10000 RUB"
+        )
+        ivan_savings = bank.open_account(
+            "CL001", "savings", balance=50000, min_balance=1000, interest_rate=0.03
+        )
+        print(
+            f"  {ivan_savings.account_number}: SavingsAccount for Ivan, balance=50000 RUB"
+        )
+        anna_premium = bank.open_account(
+            "CL002", "premium", balance=20000, overdraft_limit=10000, fixed_fee=200
+        )
+        print(
+            f"  {anna_premium.account_number}: PremiumAccount for Anna, balance=20000 RUB"
+        )
+        anna_checking = bank.open_account("CL002", "bank", balance=5000)
+        print(
+            f"  {anna_checking.account_number}: BankAccount for Anna, balance=5000 RUB"
+        )
+        alex_investment = bank.open_account("CL003", "investment", balance=1000000)
+        print(
+            f"  {alex_investment.account_number}: InvestmentAccount for Alex, balance=1000000 RUB"
+        )
+        alex_checking = bank.open_account("CL003", "bank", balance=15000)
+        print(
+            f"  {alex_checking.account_number}: BankAccount for Alex, balance=15000 RUB"
+        )
+        maria_savings = bank.open_account(
+            "CL004", "savings", balance=30000, min_balance=500, interest_rate=0.025
+        )
+        print(
+            f"  {maria_savings.account_number}: SavingsAccount for Maria, balance=30000 RUB"
+        )
+        maria_checking = bank.open_account("CL004", "bank", balance=8000)
+        print(
+            f"  {maria_checking.account_number}: BankAccount for Maria, balance=8000 RUB"
+        )
+        dmitri_premium = bank.open_account(
+            "CL005", "premium", balance=15000, overdraft_limit=5000, fixed_fee=150
+        )
+        print(
+            f"  {dmitri_premium.account_number}: PremiumAccount for Dmitri, balance=15000 RUB"
+        )
+        dmitri_checking = bank.open_account("CL005", "bank", balance=12000)
+        print(
+            f"  {dmitri_checking.account_number}: BankAccount for Dmitri, balance=12000 RUB"
+        )
+        elena_checking = bank.open_account("CL006", "bank", balance=25000)
+        print(
+            f"  {elena_checking.account_number}: BankAccount for Elena, balance=25000 RUB"
+        )
+        elena_savings = bank.open_account(
+            "CL006", "savings", balance=40000, min_balance=2000, interest_rate=0.04
+        )
+        print(
+            f"  {elena_savings.account_number}: SavingsAccount for Elena, balance=40000 RUB"
+        )
+
+        all_accounts = {
+            ivan_checking.account_number: ivan_checking,
+            ivan_savings.account_number: ivan_savings,
+            anna_premium.account_number: anna_premium,
+            anna_checking.account_number: anna_checking,
+            alex_investment.account_number: alex_investment,
+            alex_checking.account_number: alex_checking,
+            maria_savings.account_number: maria_savings,
+            maria_checking.account_number: maria_checking,
+            dmitri_premium.account_number: dmitri_premium,
+            dmitri_checking.account_number: dmitri_checking,
+            elena_checking.account_number: elena_checking,
+            elena_savings.account_number: elena_savings,
+        }
+        print(f"\nTotal accounts: {len(all_accounts)}")
+
+        # ================================================================
+        # 2. Simulation - Transactions
+        # ================================================================
+        print("\n=== 2. SIMULATION ===")
+
+        # Freeze an account to create failed transactions
+        bank.freeze_account(anna_checking.account_number)
+        print(f"\nFrozen account: {anna_checking.account_number} (Anna's checking)")
+
+        # Create transaction processor
+        processor = TransactionProcessor(accounts=all_accounts)
+        queue = processor.queue
+
+        # --- Create 35 transactions ---
+        print("\n--- Creating 35 transactions ---")
+        txn_counter = [0]
+        txns = []
+
+        def make_txn(type_, amount, sender=None, recipient=None):
+            txn_counter[0] += 1
+            return Transaction(
+                type=type_,
+                amount=Decimal(amount),
+                currency="RUB",
+                sender=sender,
+                recipient=recipient,
+                transaction_id=f"TXN_{txn_counter[0]:03d}",
+            )
+
+        # Group 1: Successful internal transfers (8)
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "1000.00",
+                ivan_checking.account_number,
+                anna_premium.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "2500.00",
+                alex_checking.account_number,
+                ivan_savings.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "750.00",
+                maria_checking.account_number,
+                dmitri_checking.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "3000.00",
+                elena_checking.account_number,
+                maria_savings.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "1200.00",
+                dmitri_checking.account_number,
+                alex_checking.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "2000.00",
+                ivan_checking.account_number,
+                elena_savings.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "5000.00",
+                alex_investment.account_number,
+                ivan_checking.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "3500.00",
+                anna_premium.account_number,
+                dmitri_premium.account_number,
+            )
+        )
+
+        # Group 2: Successful deposits (5)
+        txns.append(
+            make_txn(
+                TransactionType.DEPOSIT,
+                "1500.00",
+                recipient=ivan_savings.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.DEPOSIT,
+                "800.00",
+                recipient=alex_checking.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.DEPOSIT,
+                "2200.00",
+                recipient=maria_savings.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.DEPOSIT,
+                "1100.00",
+                recipient=elena_checking.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.DEPOSIT,
+                "900.00",
+                recipient=dmitri_checking.account_number,
+            )
+        )
+
+        # Group 3: Successful withdrawals (2)
+        txns.append(
+            make_txn(
+                TransactionType.WITHDRAWAL,
+                "500.00",
+                sender=ivan_checking.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.WITHDRAWAL,
+                "300.00",
+                sender=alex_checking.account_number,
+            )
+        )
+
+        # Group 4: Failed - insufficient funds (3)
+        txns.append(
+            make_txn(
+                TransactionType.WITHDRAWAL,
+                "999999.00",
+                sender=ivan_checking.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.WITHDRAWAL,
+                "50000.00",
+                sender=maria_checking.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.WITHDRAWAL,
+                "100000.00",
+                sender=elena_checking.account_number,
+            )
+        )
+
+        # Group 5: Failed - frozen account (2)
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "200.00",
+                anna_checking.account_number,
+                anna_premium.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "100.00",
+                anna_checking.account_number,
+                ivan_savings.account_number,
+            )
+        )
+
+        # Group 6: Failed - external transfer insufficient funds (1)
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "50000.00",
+                maria_checking.account_number,
+                "EXTERNAL_ACC_001",
+            )
+        )
+
+        # Group 7: Successful external transfers with fee (3)
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "500.00",
+                ivan_checking.account_number,
+                "EXTERNAL_ACC_002",
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "700.00",
+                alex_checking.account_number,
+                "EXTERNAL_ACC_003",
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "300.00",
+                dmitri_checking.account_number,
+                "EXTERNAL_ACC_004",
+            )
+        )
+
+        # Group 8: Large amount transfers (5) - suspicious
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "150000.00",
+                alex_investment.account_number,
+                ivan_checking.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "200000.00",
+                alex_investment.account_number,
+                anna_premium.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "120000.00",
+                alex_investment.account_number,
+                dmitri_premium.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "110000.00",
+                alex_investment.account_number,
+                maria_savings.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "300000.00",
+                alex_investment.account_number,
+                elena_savings.account_number,
+            )
+        )
+
+        # Group 9: Transfers to unknown accounts (3) - suspicious
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "25000.00",
+                alex_investment.account_number,
+                "UNKNOWN_ACC_999",
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "40000.00",
+                alex_investment.account_number,
+                "FOREIGN_ACC_888",
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "35000.00",
+                alex_investment.account_number,
+                "OFFSHORE_ACC_777",
+            )
+        )
+
+        # Group 10: Additional transactions (3)
+        txns.append(
+            make_txn(
+                TransactionType.DEPOSIT,
+                "3000.00",
+                recipient=ivan_savings.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.TRANSFER,
+                "1000.00",
+                maria_checking.account_number,
+                maria_savings.account_number,
+            )
+        )
+        txns.append(
+            make_txn(
+                TransactionType.WITHDRAWAL,
+                "500.00",
+                sender=elena_savings.account_number,
+            )
+        )
+
+        print(f"Created {len(txns)} transactions")
+
+        # --- Add transactions to queue ---
+        print("\n--- Adding transactions to queue ---")
+        for i, txn in enumerate(txns):
+            priority = (
+                TransactionPriority.URGENT
+                if i % 4 == 0
+                else TransactionPriority.HIGH
+                if i % 4 == 1
+                else TransactionPriority.NORMAL
+                if i % 4 == 2
+                else TransactionPriority.LOW
+            )
+            queue.add(txn, priority)
+            print(
+                f"  Queued: {txn.type.value} {txn.amount} {txn.currency} "
+                f"[{txn.sender or '-'} -> {txn.recipient or '-'}] (priority={priority.name})"
+            )
+
+        print(f"\nTotal in queue: {queue.size()}")
+
+        # ================================================================
+        # 3. Logging - Process queue
+        # ================================================================
+        print("\n=== 3. LOGGING - Processing queue ===\n")
+        stats = processor.process_queue()
+        print("\n--- Processing results ---")
+        print(f"  Completed: {stats['completed']}")
+        print(f"  Failed: {stats['failed']}")
+        print(f"  Skipped: {stats['skipped']}")
+
+        # Show successful transactions
+        print("\n--- Successful transactions ---")
+        completed_count = sum(1 for txn in txns if txn.is_successful())
+        for txn in txns:
+            if txn.is_successful():
+                fee_info = f", fee={txn.fee}" if txn.fee > 0 else ""
+                print(
+                    f"  [OK] {txn.id}: {txn.type.value} {txn.amount} {txn.currency} "
+                    f"[{txn.sender or '-'} -> {txn.recipient or '-'}]{fee_info}"
+                )
+        print(f"  Total successful: {completed_count}")
+
+        # Show rejected/failed transactions from error log
+        print("\n--- Rejected transactions ---")
+        for entry in processor.error_log:
+            print(
+                f"  [FAIL] [{entry['transaction_id'][:8]}...] {entry['error_type']}: {entry['error']}"
+            )
+        print(f"  Total failed: {len(processor.error_log)}")
+
+        # Risk Analysis - Suspicious transactions
+        print("\n=== RISK ANALYSIS ===")
+
+        audit_log = AuditLog()
+        analyzer = RiskAnalyzer(audit_log=audit_log)
+
+        # Register known recipients (internal bank accounts)
+        for acc_num in all_accounts:
+            analyzer.register_known_recipient(acc_num)
+
+        # Analyze all transactions for risk
+        print("\n--- Analyzing transactions for risk ---")
+        for txn in txns:
+            level = analyzer.analyze_transaction(txn, client_id="CL001")
+            blocked = " [BLOCKED]" if level == RiskLevel.HIGH else ""
+            reason = f" - {txn.failure_reason}" if txn.failure_reason else ""
+            print(
+                f"  {txn.id}: {txn.amount} {txn.currency} -> {level.value}{blocked}"
+                f" [status={txn.status.value}{reason}]"
+            )
+
+        # Show blocked transactions
+        blocked_txns = analyzer.get_blocked_transactions()
+        print(f"\n--- Blocked transactions ({len(blocked_txns)}) ---")
+        for txn in blocked_txns:
+            print(f"  {txn.id}: {txn.amount} {txn.currency} - BLOCKED")
+
+        # Show suspicious transactions
+        suspicious = analyzer.get_suspicious_transactions()
+        print(f"\n--- Suspicious transactions ({len(suspicious)}) ---")
+        for entry in suspicious:
+            print(
+                f"  {entry['transaction_id']}: {entry['risk_level'].value} "
+                f"(score={entry['risk_score']})"
+            )
+
+        # Show risk profile
+        profile = analyzer.get_risk_profile("CL001")
+        print("\n--- Client risk profile (CL001) ---")
+        if profile:
+            print(f"  Overall risk level: {profile['overall_risk_level'].value}")
+            print(f"  Total transactions: {profile['total_transactions']}")
+            print(f"  High risk: {profile['high_risk_count']}")
+            print(f"  Medium risk: {profile['medium_risk_count']}")
+            print(f"  Low risk: {profile['low_risk_count']}")
+            print(f"  Average risk score: {profile['average_risk_score']}")
+
+        # Show statistics
+        rstats = analyzer.get_error_statistics()
+        print("\n--- Risk statistics ---")
+        print(f"  Total analyzed: {rstats['total_analyzed']}")
+        print(
+            f"  High risk: {rstats['high_risk']} ({rstats.get('high_risk_percentage', 0)}%)"
+        )
+        print(
+            f"  Medium risk: {rstats['medium_risk']} ({rstats.get('medium_risk_percentage', 0)}%)"
+        )
+        print(f"  Low risk: {rstats['low_risk']}")
+        print(f"  Blocked count: {rstats['blocked_count']}")
+
+        # ================================================================
+        # 4. User scenarios
+        # ================================================================
+        print("\n=== 4. USER SCENARIOS ===")
+
+        # 4a. Display a client's accounts
+        print("\n--- Client accounts: Ivan Petrov (CL001) ---")
+        ivan = bank.get_client("CL001")
+        print(f"Client: {ivan.full_name} (ID: {ivan.client_id})")
+        print(f"Contact: {ivan.contact_details}, Age: {ivan.age}")
+        print(f"Account numbers: {', '.join(ivan.account_numbers)}")
+        for acc_num in ivan.account_numbers:
+            acc = bank.get_account(acc_num)
+            print(
+                f"  {acc.account_number}: {type(acc).__name__}, "
+                f"balance={acc.balance} {acc.currency}, status={acc.status.value}"
+            )
+
+        # 4b. Show transaction history
+        print("\n--- Transaction history (all processed transactions) ---")
+        for txn in txns:
+            status_str = "SUCCESS" if txn.is_successful() else "FAILED"
+            fee_info = f", fee={txn.fee}" if txn.fee > 0 else ""
+            print(
+                f"  {txn.id}: {txn.type.value} {txn.amount} {txn.currency} "
+                f"[{txn.sender or '-'} -> {txn.recipient or '-'}]: {status_str}{fee_info}"
+            )
+
+        # 4c. Show suspicious transactions
+        print("\n--- Suspicious transactions (risk >= MEDIUM) ---")
+        for entry in suspicious:
+            print(
+                f"  {entry['transaction_id']}: {entry['risk_level'].value} "
+                f"(score={entry['risk_score']})"
+            )
+
+        print("\n" + "=" * 60)
+        print("           DAY 6 DEMO COMPLETE")
+        print("=" * 60)
 
 
 if __name__ == "__main__":
     main()
+    day6_demo()
