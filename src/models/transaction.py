@@ -6,14 +6,16 @@ from typing import Any, ClassVar
 from uuid import uuid4
 
 from ..exceptions import (
+    AccountClosedError,
     AccountFrozenError,
     InsufficientFundsError,
     InvalidOperationError,
     TransactionFailedError,
+    TransactionProhibitedError,
 )
 from ..logging import transaction_logger
 from ..utils import validate_amount, validate_currency
-from .accounts import AccountStatus, BankAccount, PremiumAccount
+from .accounts import AccountStatus, BankAccount, PremiumAccount, SavingsAccount
 
 # ======================================
 # Day 4: Transaction System
@@ -671,6 +673,84 @@ class TransactionProcessor:
                 f"({sender.balance})."
             )
 
+    def _validate_account_invariants(
+        self,
+        transaction: Transaction,
+        debit_amount: Decimal,
+        credit_amount: Decimal,
+    ) -> None:
+        """Validate account invariants before any balance is mutated.
+
+        Enforced invariants (for sender and recipient when present):
+          1. Account is not frozen (``AccountFrozenError``).
+          2. Account is not closed (``AccountClosedError``).
+          3. Current time is not within prohibited hours 00:00-05:00
+             (``TransactionProhibitedError``).
+          4. A sender that is a :class:`SavingsAccount` must keep a balance
+             at or above ``min_balance`` after the debit
+             (``InsufficientFundsError``).
+
+        This is a single gate placed immediately before the atomic balance
+        changes in :meth:`_execute_transaction`, so a failure leaves all
+        balances untouched.
+
+        Args:
+            transaction: Transaction being executed.
+            debit_amount: Amount to be debited from the sender (already
+                converted to the sender's currency).
+            credit_amount: Amount to be credited to the recipient.
+
+        Raises:
+            AccountFrozenError: If the sender or recipient account is frozen.
+            AccountClosedError: If the sender or recipient account is closed.
+            TransactionProhibitedError: If the operation is attempted during
+                prohibited hours (00:00-05:00).
+            InsufficientFundsError: If a savings-account sender would drop
+                below its minimum balance.
+        """
+        sender = (
+            self._accounts.get(transaction.sender)
+            if transaction.sender
+            else None
+        )
+        recipient = (
+            self._accounts.get(transaction.recipient)
+            if transaction.recipient
+            else None
+        )
+
+        # Rule: no operations on frozen or closed accounts.
+        for account, role in ((sender, "sender"), (recipient, "recipient")):
+            if account is None:
+                continue
+            if account.status == AccountStatus.FROZEN:
+                raise AccountFrozenError(
+                    f"Transaction prohibited: {role} account "
+                    f"{account.account_number} is frozen."
+                )
+            if account.status == AccountStatus.CLOSED:
+                raise AccountClosedError(
+                    f"Transaction prohibited: {role} account "
+                    f"{account.account_number} is closed."
+                )
+
+        # Rule: prohibited hours (00:00-05:00).
+        for account in (sender, recipient):
+            if account is not None:
+                account._check_prohibited_hours()
+
+        # Rule: savings account minimum balance (sender debit).
+        if (
+            sender is not None
+            and isinstance(sender, SavingsAccount)
+            and debit_amount > Decimal("0.00")
+        ):
+            if sender.balance - debit_amount < sender.min_balance:
+                raise InsufficientFundsError(
+                    f"Cannot withdraw below minimum balance of {sender.min_balance}. "
+                    f"Available: {sender.balance - sender.min_balance}."
+                )
+
     # Transaction processing
     def process(self, transaction: Transaction) -> bool:
         """
@@ -733,7 +813,9 @@ class TransactionProcessor:
             InvalidOperationError,
             TransactionFailedError,
             AccountFrozenError,
+            AccountClosedError,
             InsufficientFundsError,
+            TransactionProhibitedError,
         ) as e:
             transaction._set_status(TransactionStatus.FAILED, failure_reason=str(e))
             self.log_error(transaction, e)
@@ -838,6 +920,9 @@ class TransactionProcessor:
                     f"{sender.currency}, required {debit_amount} "
                     f"{sender.currency}."
                 )
+
+        # Unified account invariant check before any balance is mutated.
+        self._validate_account_invariants(transaction, debit_amount, credit_amount)
 
         # Apply the movement 
         if sender is not None and do_debit:
