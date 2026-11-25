@@ -11,14 +11,14 @@ from src.exceptions import (
     InvalidOperationError,
     TransactionProhibitedError,
 )
-from src.models import (
+from src.models.accounts import (
     AccountStatus,
-    Bank,
     BankAccount,
     InvestmentAccount,
     PremiumAccount,
     SavingsAccount,
 )
+from src.models.bank import Bank
 from src.models.transaction import (
     Transaction,
     TransactionPriority,
@@ -393,8 +393,16 @@ def main():
             alex_invest.account_number: alex_invest,
         }
 
-        # Create a transaction processor
-        processor = TransactionProcessor(accounts=accounts)
+        # Create audit log and risk analyzer and register internal accounts
+        # as known recipients.
+        audit_log = AuditLog()
+        analyzer = RiskAnalyzer(audit_log=audit_log)
+        for acc_num in accounts:
+            analyzer.register_known_recipient(acc_num)
+
+        # Create a transaction processor wired to the risk analyzer so that
+        # high-risk transactions are blocked before any funds are moved.
+        processor = TransactionProcessor(accounts=accounts, risk_analyzer=analyzer)
         # Create a queue for the processor
         queue = processor.queue
 
@@ -614,16 +622,6 @@ def main():
         print("=== Audit and Risk Analysis ===")
         print("===============================")
 
-        # Create audit log and risk analyzer
-        audit_log = AuditLog()
-        analyzer = RiskAnalyzer(audit_log=audit_log)
-
-        # Register known recipients (bank's internal accounts)
-        analyzer.register_known_recipient(ivan_bank.account_number)
-        analyzer.register_known_recipient(ivan_savings.account_number)
-        analyzer.register_known_recipient(anna_premium.account_number)
-        analyzer.register_known_recipient(alex_invest.account_number)
-
         # Create a set of normal and suspicious transactions
         risk_txns = [
             # Normal: small daytime transfer to known account
@@ -692,8 +690,10 @@ def main():
             level = analyzer.analyze_transaction(txn, client_id="CL001")
             analysis_results.append((txn, level))
             blocked = " [BLOCKED]" if level == RiskLevel.HIGH else ""
+            reason = f" - {txn.failure_reason}" if txn.failure_reason else ""
             print(
                 f"  {txn.id}: {txn.amount} {txn.currency} -> {level.value}{blocked}"
+                f" [status={txn.status.value}{reason}]"
             )
 
         # Show blocked transactions
