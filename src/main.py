@@ -25,7 +25,14 @@ from src.models.transaction import (
     TransactionProcessor,
     TransactionType,
 )
-from src.services import AuditLog, RiskAnalyzer, RiskLevel
+from src.services import (
+    AuditLog,
+    ChartType,
+    ReportBuilder,
+    ReportType,
+    RiskAnalyzer,
+    RiskLevel,
+)
 
 
 def main():
@@ -765,7 +772,7 @@ def day6_demo():
         # 1. Initialization
         # ================================================================
         print("\n=== 1. INITIALIZATION ===")
-        bank = Bank("Day6 Bank")
+        bank = Bank("BoBank")
 
         # --- Add clients (5-10) ---
         print("\n--- Adding clients ---")
@@ -1322,12 +1329,139 @@ def day6_demo():
                 f"  {entry['transaction_id']}: {entry['risk_level'].value} "
                 f"(score={entry['risk_score']})"
             )
-
-        print("\n" + "=" * 60)
+        print()
         print("           DAY 6 DEMO COMPLETE")
-        print("=" * 60)
+        print()
+
+        return {
+            "bank": bank,
+            "analyzer": analyzer,
+            "audit_log": audit_log,
+            "txns": txns,
+            "processor": processor,
+            "all_accounts": all_accounts,
+        }
+
+
+# Day 7: Reports and Charts
+def day7_reports_charts(data):
+    """Generate reports and save charts using data from day6_demo."""
+    print()
+    print("=" * 60)
+    print("          DAY 7: REPORTS AND CHARTS")
+    print("=" * 60)
+
+    # Get all data from day 6 demo
+    # data = day6_demo()
+    bank = data["bank"]
+    analyzer = data["analyzer"]
+
+    # ================================================================
+    # 1. Initialize ReportBuilder
+    # ================================================================
+    print("\n=== 1. INITIALIZING REPORT BUILDER ===")
+    builder = ReportBuilder(bank)
+    print(f"ReportBuilder created for bank: {bank.name}")
+
+    # ================================================================
+    # 2. Generate Client Report
+    # ================================================================
+    print("\n=== 2. CLIENT REPORT (CL001 - Ivan Petrov) ===")
+    client_report = builder.generate_client_report("CL001")
+    print(builder.generate_text_report(client_report))
+
+    # ================================================================
+    # 3. Generate Bank Report
+    # ================================================================
+    print("\n=== 3. BANK REPORT ===")
+    bank_report = builder.generate_bank_report()
+    print(builder.generate_text_report(bank_report))
+
+    # ================================================================
+    # 4. Generate Risk Report
+    # ================================================================
+    print("\n=== 4. RISK REPORT ===")
+    risk_report = builder.generate_risk_report(analyzer)
+    print(builder.generate_text_report(risk_report))
+
+    # ================================================================
+    # 5. Export to JSON
+    # ================================================================
+    print("\n=== 5. EXPORT TO JSON ===")
+    builder.export_to_json(client_report, "reports/client_report.json")
+    builder.export_to_json(bank_report, "reports/bank_report.json")
+    builder.export_to_json(risk_report, "reports/risk_report.json")
+    print("  Exported: reports/client_report.json")
+    print("  Exported: reports/bank_report.json")
+    print("  Exported: reports/risk_report.json")
+
+    # ================================================================
+    # 6. Export to CSV
+    # ================================================================
+    print("\n=== 6. EXPORT TO CSV ===")
+    builder.export_to_csv(client_report, "reports/client_report.csv")
+    builder.export_to_csv(bank_report, "reports/bank_report.csv")
+    builder.export_to_csv(risk_report, "reports/risk_report.csv")
+    print("  Exported: reports/client_report.csv")
+    print("  Exported: reports/bank_report.csv")
+    print("  Exported: reports/risk_report.csv")
+
+    # ================================================================
+    # 7. Create Charts
+    # ================================================================
+    print("\n=== 7. CREATING CHARTS ===")
+
+    # Pie chart: Account status distribution
+    status_dist = bank_report["account_status_distribution"]
+    builder.create_pie_chart(status_dist, title="Account Status Distribution")
+    print("  Created pie chart: Account Status Distribution")
+
+    # Pie chart: Currency distribution
+    currency_dist = bank_report["currency_distribution"]
+    builder.create_pie_chart(currency_dist, title="Currency Distribution")
+    print("  Created pie chart: Currency Distribution")
+
+    # Bar chart: Account type distribution
+    type_dist = bank_report["account_type_distribution"]
+    builder.create_bar_chart(type_dist, title="Account Type Distribution")
+    print("  Created bar chart: Account Type Distribution")
+
+    # Bar chart: Top clients by balance
+    top_clients = {
+        c["full_name"]: float(c["total_balance"])
+        for c in bank_report["top_clients"]
+    }
+    builder.create_bar_chart(top_clients, title="Top Clients by Balance")
+    print("  Created bar chart: Top Clients by Balance")
+
+    # Balance history chart: sample data
+    balances = [
+        Decimal("10000.00"),
+        Decimal("15000.00"),
+        Decimal("12000.00"),
+        Decimal("18000.00"),
+        Decimal("22000.00"),
+    ]
+    dates = ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"]
+    builder.create_balance_history_chart(
+        balances, dates=dates, title="Balance History (Ivan Petrov)"
+    )
+    print("  Created balance history chart: Balance History (Ivan Petrov)")
+
+    # ================================================================
+    # 8. Save Charts
+    # ================================================================
+    print("\n=== 8. SAVING CHARTS ===")
+    saved_paths = builder.save_charts("charts")
+    for path in saved_paths:
+        print(f"  Saved: {path}")
+
+    print()
+    print("          DAY 7 DEMO COMPLETE")
+    print()
 
 
 if __name__ == "__main__":
     main()
-    day6_demo()
+    data = day6_demo()
+    day7_reports_charts(data)
