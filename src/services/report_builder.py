@@ -346,4 +346,256 @@ class ReportBuilder:
         lines.append("=" * 60)
         return "\n".join(lines)
 
+# ==================== Export Methods ====================
+
+    def export_to_json(self, report_data: dict[str, Any], filepath: str) -> str:
+        """Export a report to a JSON file.
+
+        Args:
+            report_data: The report data dictionary.
+            filepath: Path to the output JSON file.
+
+        Returns:
+            The filepath of the saved file.
+        """
+        directory = os.path.dirname(os.path.abspath(filepath))
+        if directory and not os.path.isdir(directory):
+            os.makedirs(directory, exist_ok=True)
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(report_data, f, indent=2, ensure_ascii=False, default=str)
+
+        return filepath
+
+    def export_to_csv(self, report_data: dict[str, Any], filepath: str) -> str:
+        """Export a report to a CSV file.
+
+        Args:
+            report_data: The report data dictionary.
+            filepath: Path to the output CSV file.
+
+        Returns:
+            The filepath of the saved file.
+        """
+        directory = os.path.dirname(os.path.abspath(filepath))
+        if directory and not os.path.isdir(directory):
+            os.makedirs(directory, exist_ok=True)
+
+        with open(filepath, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+
+            report_type = report_data.get("report_type", "unknown")
+
+            if report_type == ReportType.CLIENT.value:
+                writer.writerow(["Field", "Value"])
+                writer.writerow(["client_id", report_data.get("client_id", "")])
+                writer.writerow(["full_name", report_data.get("full_name", "")])
+                writer.writerow(
+                    ["contact_details", report_data.get("contact_details", "")]
+                )
+                writer.writerow(["age", report_data.get("age", "")])
+                writer.writerow(["status", report_data.get("status", "")])
+                writer.writerow(["is_locked", report_data.get("is_locked", "")])
+                writer.writerow(["is_suspicious", report_data.get("is_suspicious", "")])
+                writer.writerow(
+                    [
+                        "failed_login_attempts",
+                        report_data.get("failed_login_attempts", ""),
+                    ]
+                )
+                writer.writerow(
+                    ["account_count", report_data.get("account_count", "")]
+                )
+                writer.writerow(["total_balance", report_data.get("total_balance", "")])
+                writer.writerow([])
+                writer.writerow(
+                    [
+                        "Account Type",
+                        "Account Number",
+                        "Owner",
+                        "Balance",
+                        "Currency",
+                        "Status",
+                    ]
+                )
+                for acc in report_data.get("accounts", []):
+                    writer.writerow(
+                        [
+                            acc.get("account_type", ""),
+                            acc.get("account_number", ""),
+                            acc.get("owner", ""),
+                            acc.get("balance", ""),
+                            acc.get("currency", ""),
+                            acc.get("status", ""),
+                        ]
+                    )
+
+            elif report_type == ReportType.BANK.value:
+                writer.writerow(["Field", "Value"])
+                writer.writerow(["bank_name", report_data.get("bank_name", "")])
+                writer.writerow(["client_count", report_data.get("client_count", "")])
+                writer.writerow(
+                    ["account_count", report_data.get("account_count", "")]
+                )
+                writer.writerow(["total_balance", report_data.get("total_balance", "")])
+                writer.writerow(["locked_clients", report_data.get("locked_clients", "")])
+                writer.writerow(
+                    ["suspicious_clients", report_data.get("suspicious_clients", "")]
+                )
+                writer.writerow([])
+                writer.writerow(["Distribution Type", "Category", "Count"])
+                for dist_name, dist_data in [
+                    ("client_status", report_data.get("client_status_distribution", {})),
+                    ("account_status", report_data.get("account_status_distribution", {})),
+                    ("account_type", report_data.get("account_type_distribution", {})),
+                    ("currency", report_data.get("currency_distribution", {})),
+                ]:
+                    for category, count in dist_data.items():
+                        writer.writerow([dist_name, category, count])
+                writer.writerow([])
+                writer.writerow(["Rank", "Client ID", "Full Name", "Total Balance"])
+                for i, client in enumerate(report_data.get("top_clients", []), 1):
+                    writer.writerow(
+                        [
+                            i,
+                            client.get("client_id", ""),
+                            client.get("full_name", ""),
+                            client.get("total_balance", ""),
+                        ]
+                    )
+
+            elif report_type == ReportType.RISK.value:
+                stats = report_data.get("error_statistics", {})
+                writer.writerow(["Field", "Value"])
+                writer.writerow(["total_analyzed", stats.get("total_analyzed", 0)])
+                writer.writerow(["high_risk", stats.get("high_risk", 0)])
+                writer.writerow(["medium_risk", stats.get("medium_risk", 0)])
+                writer.writerow(["low_risk", stats.get("low_risk", 0)])
+                writer.writerow(["blocked_count", stats.get("blocked_count", 0)])
+                writer.writerow(
+                    [
+                        "suspicious_transactions_count",
+                        report_data.get("suspicious_transactions_count", 0),
+                    ]
+                )
+                writer.writerow(
+                    [
+                        "blocked_transactions_count",
+                        report_data.get("blocked_transactions_count", 0),
+                    ]
+                )
+                writer.writerow([])
+                writer.writerow(
+                    [
+                        "Client ID",
+                        "Overall Risk Level",
+                        "Total Transactions",
+                        "High Risk",
+                        "Medium Risk",
+                        "Low Risk",
+                        "Avg Score",
+                    ]
+                )
+                for client_id, profile in report_data.get(
+                    "client_risk_profiles", {}
+                ).items():
+                    writer.writerow(
+                        [
+                            client_id,
+                            profile.get("overall_risk_level", ""),
+                            profile.get("total_transactions", 0),
+                            profile.get("high_risk_count", 0),
+                            profile.get("medium_risk_count", 0),
+                            profile.get("low_risk_count", 0),
+                            profile.get("average_risk_score", 0),
+                        ]
+                    )
+
+        return filepath
+
+    # ==================== Chart Creation ====================
+
+    def create_pie_chart(
+        self,
+        data: dict[str, int | float],
+        title: str = "Pie Chart",
+    ) -> Any:
+        """Create a pie chart and store it internally.
+
+        Args:
+            data: Dictionary of label -> value.
+            title: Chart title (used as the internal key).
+
+        Returns:
+            The matplotlib Figure object.
+        """
+        labels = list(data.keys())
+        values = list(data.values())
+
+        fig, ax = plt.subplots()
+        ax.pie(values, labels=labels, autopct="%1.1f%%", startangle=90)
+        ax.set_title(title)
+        ax.axis("equal")
+
+        self._figures[title] = fig
+        return fig
+
+    def create_bar_chart(
+        self,
+        data: dict[str, int | float],
+        title: str = "Bar Chart",
+    ) -> Any:
+        """Create a bar chart and store it internally.
+
+        Args:
+            data: Dictionary of label -> value.
+            title: Chart title (used as the internal key).
+
+        Returns:
+            The matplotlib Figure object.
+        """
+        labels = list(data.keys())
+        values = list(data.values())
+
+        fig, ax = plt.subplots()
+        ax.bar(labels, values)
+        ax.set_title(title)
+        ax.set_ylabel("Value")
+        plt.xticks(rotation=45, ha="right")
+        plt.tight_layout()
+
+        self._figures[title] = fig
+        return fig
+
+    def create_balance_history_chart(
+        self,
+        balances: list[Decimal | int | float],
+        dates: list[str] | None = None,
+        title: str = "Balance History",
+    ) -> Any:
+        """Create a balance history line chart and store it internally.
+
+        Args:
+            balances: List of balance values over time.
+            dates: Optional list of date strings corresponding to balances.
+            title: Chart title (used as the internal key).
+
+        Returns:
+            The matplotlib Figure object.
+        """
+        fig, ax = plt.subplots()
+
+        x = dates if dates else list(range(len(balances)))
+        ax.plot(x, [float(b) for b in balances], marker="o", linestyle="-", linewidth=2)
+        ax.set_title(title)
+        ax.set_ylabel("Balance")
+        ax.grid(True, alpha=0.3)
+
+        if dates:
+            plt.xticks(rotation=45, ha="right")
+        plt.tight_layout()
+
+        self._figures[title] = fig
+        return fig
+
     
