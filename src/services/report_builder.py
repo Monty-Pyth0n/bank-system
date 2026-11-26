@@ -4,7 +4,7 @@ import os
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any
+from typing import Any, Sequence
 
 import matplotlib
 
@@ -569,7 +569,7 @@ class ReportBuilder:
 
     def create_balance_history_chart(
         self,
-        balances: list[Decimal | int | float],
+        balances: Sequence[Decimal | int | float],
         dates: list[str] | None = None,
         title: str = "Balance History",
     ) -> Any:
