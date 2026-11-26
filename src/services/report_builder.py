@@ -1,10 +1,11 @@
 import csv
 import json
 import os
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Sequence
+from typing import Any
 
 import matplotlib
 
