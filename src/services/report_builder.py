@@ -234,4 +234,116 @@ class ReportBuilder:
         else:
             raise InvalidOperationError(f"Unknown report type: {report_type}")
 
+    # ==================== Text Report ====================
+
+    def generate_text_report(self, report_data: dict[str, Any]) -> str:
+        """Generate a human-readable text representation of a report.
+
+        Args:
+            report_data: The report data dictionary (as returned by generate_* methods).
+
+        Returns:
+            A formatted text string representing the report.
+        """
+        lines: list[str] = []
+        report_type = report_data.get("report_type", "unknown")
+
+        lines.append("=" * 60)
+        lines.append(f"REPORT TYPE: {report_type.upper()}")
+        lines.append(f"Generated at: {report_data.get('generated_at', 'N/A')}")
+        lines.append("=" * 60)
+        lines.append("")
+
+        if report_type == ReportType.CLIENT.value:
+            lines.append(f"Client ID: {report_data.get('client_id')}")
+            lines.append(f"Full Name: {report_data.get('full_name')}")
+            lines.append(f"Contact: {report_data.get('contact_details')}")
+            lines.append(f"Age: {report_data.get('age')}")
+            lines.append(f"Status: {report_data.get('status')}")
+            lines.append(f"Is Locked: {report_data.get('is_locked')}")
+            lines.append(f"Is Suspicious: {report_data.get('is_suspicious')}")
+            lines.append(
+                f"Failed Login Attempts: {report_data.get('failed_login_attempts')}"
+            )
+            lines.append(f"Suspicious Activity: {report_data.get('suspicious_activity')}")
+            lines.append(f"Account Count: {report_data.get('account_count')}")
+            lines.append(f"Total Balance: {report_data.get('total_balance')}")
+            lines.append("")
+            lines.append("Accounts:")
+            for acc in report_data.get("accounts", []):
+                lines.append(
+                    f"  - {acc.get('account_type')} ({acc.get('account_number')}): "
+                    f"{acc.get('balance')} {acc.get('currency')} [{acc.get('status')}]"
+                )
+
+        elif report_type == ReportType.BANK.value:
+            lines.append(f"Bank Name: {report_data.get('bank_name')}")
+            lines.append(f"Client Count: {report_data.get('client_count')}")
+            lines.append(f"Account Count: {report_data.get('account_count')}")
+            lines.append(f"Total Balance: {report_data.get('total_balance')}")
+            lines.append("")
+            lines.append("Client Status Distribution:")
+            for status, count in report_data.get(
+                "client_status_distribution", {}
+            ).items():
+                lines.append(f"  {status}: {count}")
+            lines.append("")
+            lines.append("Account Status Distribution:")
+            for status, count in report_data.get(
+                "account_status_distribution", {}
+            ).items():
+                lines.append(f"  {status}: {count}")
+            lines.append("")
+            lines.append("Account Type Distribution:")
+            for acc_type, count in report_data.get(
+                "account_type_distribution", {}
+            ).items():
+                lines.append(f"  {acc_type}: {count}")
+            lines.append("")
+            lines.append("Currency Distribution:")
+            for currency, count in report_data.get(
+                "currency_distribution", {}
+            ).items():
+                lines.append(f"  {currency}: {count}")
+            lines.append("")
+            lines.append(f"Locked Clients: {report_data.get('locked_clients')}")
+            lines.append(f"Suspicious Clients: {report_data.get('suspicious_clients')}")
+            lines.append("")
+            lines.append("Top Clients by Balance:")
+            for i, client in enumerate(report_data.get("top_clients", []), 1):
+                lines.append(
+                    f"  {i}. {client.get('full_name')} ({client.get('client_id')}): "
+                    f"{client.get('total_balance')}"
+                )
+
+        elif report_type == ReportType.RISK.value:
+            stats = report_data.get("error_statistics", {})
+            lines.append("Error Statistics:")
+            lines.append(f"  Total Analyzed: {stats.get('total_analyzed', 0)}")
+            lines.append(f"  High Risk: {stats.get('high_risk', 0)}")
+            lines.append(f"  Medium Risk: {stats.get('medium_risk', 0)}")
+            lines.append(f"  Low Risk: {stats.get('low_risk', 0)}")
+            lines.append(f"  Blocked Count: {stats.get('blocked_count', 0)}")
+            lines.append("")
+            lines.append(
+                f"Suspicious Transactions: {report_data.get('suspicious_transactions_count')}"
+            )
+            lines.append(
+                f"Blocked Transactions: {report_data.get('blocked_transactions_count')}"
+            )
+            lines.append("")
+            lines.append("Client Risk Profiles:")
+            for client_id, profile in report_data.get(
+                "client_risk_profiles", {}
+            ).items():
+                lines.append(
+                    f"  {client_id}: {profile.get('overall_risk_level')} "
+                    f"({profile.get('total_transactions')} transactions, "
+                    f"avg score: {profile.get('average_risk_score')})"
+                )
+
+        lines.append("")
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
     
