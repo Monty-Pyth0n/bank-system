@@ -744,12 +744,11 @@ class TransactionProcessor:
             sender is not None
             and isinstance(sender, SavingsAccount)
             and debit_amount > Decimal("0.00")
-        ):
-            if sender.balance - debit_amount < sender.min_balance:
-                raise InsufficientFundsError(
-                    f"Cannot withdraw below minimum balance of {sender.min_balance}. "
-                    f"Available: {sender.balance - sender.min_balance}."
-                )
+        ) and sender.balance - debit_amount < sender.min_balance:
+            raise InsufficientFundsError(
+                f"Cannot withdraw below minimum balance of {sender.min_balance}. "
+                f"Available: {sender.balance - sender.min_balance}."
+            )
 
     # Transaction processing
     def process(self, transaction: Transaction) -> bool:
