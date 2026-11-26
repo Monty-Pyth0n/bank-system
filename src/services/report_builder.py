@@ -1,0 +1,237 @@
+import csv
+import json
+import os
+from datetime import UTC, datetime
+from decimal import Decimal
+from enum import Enum
+from typing import Any
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+from ..exceptions import InvalidOperationError
+from ..models.bank import Bank
+from ..services.risk_analyzer import RiskAnalyzer, RiskLevel
+
+# ======================================
+# Day 7: Reporting and Data Visualization System
+# ======================================
+
+class ReportType(Enum):
+    """Types of reports that can be generated."""
+
+    CLIENT = "client"
+    BANK = "bank"
+    RISK = "risk"
+
+
+class ChartType(Enum):
+    """Types of charts that can be created."""
+
+    PIE = "pie"
+    BAR = "bar"
+    BALANCE_HISTORY = "balance_history"
+
+
+class ReportBuilder:
+    """Builds text, JSON, and CSV reports and creates charts for the banking system.
+
+    Supports three report types:
+        - Client reports: personal info, accounts, balances, security status
+        - Bank reports: aggregate statistics, distributions, client rankings
+        - Risk reports: risk analysis, suspicious transactions, blocked transactions
+
+    Supports three chart types:
+        - Pie charts: distribution visualisations (account status, currency, etc.)
+        - Bar charts: comparative visualisations (top clients, risk distribution)
+        - Balance history charts: time-series balance evolution
+    """
+
+    def __init__(self, bank: Bank) -> None:
+        """Initialize the report builder with a bank instance.
+
+        Args:
+            bank: The Bank instance to generate reports from.
+        """
+        self._bank = bank
+        self._reports: dict[str, dict[str, Any]] = {}
+        self._figures: dict[str, Any] = {}  # chart title -> matplotlib Figure
+        self._chart_paths: dict[str, str] = {}  # chart title -> saved file path
+
+    # ==================== Report Generation ====================
+
+    def generate_client_report(self, client_id: str) -> dict[str, Any]:
+        """Generate a comprehensive report for a specific client.
+
+        Args:
+            client_id: Unique client identifier.
+
+        Returns:
+            A dictionary containing the client report data.
+
+        Raises:
+            InvalidOperationError: If the client is not found.
+        """
+        client = self._bank.get_client(client_id)
+
+        accounts_info: list[dict[str, Any]] = []
+        total_balance = Decimal("0.00")
+
+        for account_number in client.account_numbers:
+            account = self._bank.get_account(account_number)
+            info = account.get_account_info()
+            accounts_info.append(info)
+            if hasattr(account, "total_balance"):
+                total_balance += account.total_balance
+            else:
+                total_balance += account.balance
+
+        report: dict[str, Any] = {
+            "report_type": ReportType.CLIENT.value,
+            "client_id": client.client_id,
+            "full_name": client.full_name,
+            "contact_details": client.contact_details,
+            "age": client.age,
+            "status": client.status.value,
+            "is_locked": client.is_locked,
+            "is_suspicious": client.is_suspicious,
+            "failed_login_attempts": client.failed_login_attempts,
+            "suspicious_activity": client.suspicious_activity,
+            "account_count": len(accounts_info),
+            "accounts": accounts_info,
+            "total_balance": str(total_balance),
+            "generated_at": datetime.now(UTC).isoformat(),
+        }
+
+        self._reports[f"client_{client_id}"] = report
+        return report
+
+    def generate_bank_report(self) -> dict[str, Any]:
+        """Generate a comprehensive bank-wide report.
+
+        Returns:
+            A dictionary containing the bank report data.
+        """
+        clients = self._bank.clients
+        accounts = self._bank.accounts
+
+        total_balance = self._bank.get_total_balance()
+        client_ranking = self._bank.get_clients_ranking()
+
+        status_distribution: dict[str, int] = {}
+        for account in accounts:
+            status = account.status.value
+            status_distribution[status] = status_distribution.get(status, 0) + 1
+
+        type_distribution: dict[str, int] = {}
+        for account in accounts:
+            acc_type = type(account).__name__
+            type_distribution[acc_type] = type_distribution.get(acc_type, 0) + 1
+
+        currency_distribution: dict[str, int] = {}
+        for account in accounts:
+            currency = account.currency
+            currency_distribution[currency] = currency_distribution.get(currency, 0) + 1
+
+        client_status_dist: dict[str, int] = {}
+        for client in clients:
+            status = client.status.value
+            client_status_dist[status] = client_status_dist.get(status, 0) + 1
+
+        locked_clients = sum(1 for c in clients if c.is_locked)
+        suspicious_clients = sum(1 for c in clients if c.is_suspicious)
+
+        report: dict[str, Any] = {
+            "report_type": ReportType.BANK.value,
+            "bank_name": self._bank.name,
+            "client_count": len(clients),
+            "account_count": len(accounts),
+            "total_balance": str(total_balance),
+            "client_status_distribution": client_status_dist,
+            "account_status_distribution": status_distribution,
+            "account_type_distribution": type_distribution,
+            "currency_distribution": currency_distribution,
+            "locked_clients": locked_clients,
+            "suspicious_clients": suspicious_clients,
+            "top_clients": [
+                {
+                    "client_id": client.client_id,
+                    "full_name": client.full_name,
+                    "total_balance": str(balance),
+                }
+                for client, balance in client_ranking[:10]
+            ],
+            "generated_at": datetime.now(UTC).isoformat(),
+        }
+
+        self._reports["bank"] = report
+        return report
+
+    def generate_risk_report(self, risk_analyzer: RiskAnalyzer) -> dict[str, Any]:
+        """Generate a comprehensive risk analysis report.
+
+        Args:
+            risk_analyzer: The RiskAnalyzer instance to source risk data from.
+
+        Returns:
+            A dictionary containing the risk report data.
+        """
+        stats = risk_analyzer.get_error_statistics()
+        profiles = risk_analyzer.get_all_risk_profiles()
+        suspicious = risk_analyzer.get_suspicious_transactions()
+        blocked = risk_analyzer.get_blocked_transactions()
+
+        report: dict[str, Any] = {
+            "report_type": ReportType.RISK.value,
+            "error_statistics": stats,
+            "client_risk_profiles": {
+                client_id: {
+                    **profile,
+                    "overall_risk_level": profile["overall_risk_level"].value,
+                }
+                for client_id, profile in profiles.items()
+            },
+            "suspicious_transactions_count": len(suspicious),
+            "blocked_transactions_count": len(blocked),
+            "blocked_transaction_ids": [t.id for t in blocked],
+            "generated_at": datetime.now(UTC).isoformat(),
+        }
+
+        self._reports["risk"] = report
+        return report
+
+    def generate_report(self, report_type: ReportType, **kwargs) -> dict[str, Any]:
+        """Generate a report of the specified type.
+
+        Args:
+            report_type: Type of report to generate.
+            **kwargs: Additional arguments depending on report type:
+                - For CLIENT: client_id (str)
+                - For RISK: risk_analyzer (RiskAnalyzer)
+
+        Returns:
+            The generated report as a dictionary.
+
+        Raises:
+            InvalidOperationError: If required arguments are missing or type is unknown.
+        """
+        if report_type == ReportType.CLIENT:
+            client_id = kwargs.get("client_id")
+            if not client_id:
+                raise InvalidOperationError("client_id is required for client reports.")
+            return self.generate_client_report(client_id)
+        elif report_type == ReportType.BANK:
+            return self.generate_bank_report()
+        elif report_type == ReportType.RISK:
+            risk_analyzer = kwargs.get("risk_analyzer")
+            if risk_analyzer is None:
+                raise InvalidOperationError(
+                    "risk_analyzer is required for risk reports."
+                )
+            return self.generate_risk_report(risk_analyzer)
+        else:
+            raise InvalidOperationError(f"Unknown report type: {report_type}")
+
+    
