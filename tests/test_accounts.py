@@ -1,0 +1,514 @@
+from decimal import Decimal
+
+import pytest
+
+from src.exceptions import (
+    AccountClosedError,
+    AccountFrozenError,
+    InsufficientFundsError,
+    InvalidOperationError,
+    TransactionProhibitedError,
+)
+from src.models import (
+    AccountStatus,
+    BankAccount,
+    InvestmentAccount,
+    PremiumAccount,
+    SavingsAccount,
+)
+
+########################
+# Day 1: Basic Bank Account Operations
+#########################
+
+def test_create_account():
+    account = BankAccount(owner="Ivan Petrov", balance=1000, currency="RUB")
+
+    assert account.owner == "Ivan Petrov"
+    assert account.balance == Decimal("1000.00")
+    assert account.currency == "RUB"
+    assert account.status == AccountStatus.ACTIVE
+    assert account.account_number
+
+
+def test_deposit():
+    account = BankAccount("Ivan", balance=1000)
+
+    account.deposit(250)
+
+    assert account.balance == Decimal("1250.00")
+
+
+def test_withdraw():
+    account = BankAccount("Ivan", balance=1000)
+
+    account.withdraw(300)
+
+    assert account.balance == Decimal("700.00")
+
+
+def test_bank_account_withdrawal_limit():
+    """Test that BankAccount respects withdrawal limit."""
+    # Create account with default limit and sufficient balance
+    account = BankAccount(owner="Ivan Petrov", balance=1000000)
+    assert account.withdrawal_limit == Decimal("100000.00")
+
+    # Withdrawal within limit should work
+    account.withdraw(50000)
+    assert account.balance == Decimal("950000.00")
+
+    # Withdrawal exceeding limit should fail
+    with pytest.raises(InsufficientFundsError) as exc_info:
+        account.withdraw(100001)
+    assert "exceeds daily limit" in str(exc_info.value)
+
+
+def test_bank_account_custom_withdrawal_limit():
+    """Test that BankAccount respects custom withdrawal limit."""
+    # Create account with custom limit and sufficient balance
+    account = BankAccount(owner="Ivan Petrov", balance=1000000, withdrawal_limit=50000)
+    assert account.withdrawal_limit == Decimal("50000.00")
+
+    # Withdrawal within limit should work
+    account.withdraw(25000)
+    assert account.balance == Decimal("975000.00")
+
+    # Withdrawal exceeding limit should fail
+    with pytest.raises(InsufficientFundsError) as exc_info:
+        account.withdraw(50001)
+    assert "exceeds daily limit" in str(exc_info.value)
+
+
+def test_frozen_account_cannot_deposit():
+    account = BankAccount("Anna", balance=500, status=AccountStatus.FROZEN)
+
+    with pytest.raises(AccountFrozenError):
+        account.deposit(100)
+
+    assert account.balance == Decimal("500.00")
+
+
+def test_frozen_account_cannot_withdraw():
+    account = BankAccount("Anna", balance=500, status=AccountStatus.FROZEN)
+
+    with pytest.raises(AccountFrozenError):
+        account.withdraw(100)
+
+    assert account.balance == Decimal("500.00")
+
+
+def test_insufficient_funds():
+    account = BankAccount("Ivan", balance=100)
+
+    with pytest.raises(InsufficientFundsError):
+        account.withdraw(200)
+
+    assert account.balance == Decimal("100.00")
+
+
+def test_negative_deposit():
+    account = BankAccount("Ivan", balance=100)
+
+    with pytest.raises(InvalidOperationError):
+        account.deposit(-50)
+
+    assert account.balance == Decimal("100.00")
+
+
+def test_zero_deposit():
+    account = BankAccount("Ivan", balance=100)
+
+    with pytest.raises(InvalidOperationError):
+        account.deposit(0)
+
+    assert account.balance == Decimal("100.00")
+
+
+def test_closed_account_cannot_deposit():
+    account = BankAccount("Ivan", balance=100)
+    account.close()
+
+    with pytest.raises(AccountClosedError):
+        account.deposit(50)
+
+    assert account.balance == Decimal("100.00")
+
+
+def test_invalid_currency():
+    with pytest.raises(InvalidOperationError):
+        BankAccount(owner="Ivan", balance=100, currency="GBP")
+
+#######################
+# Day 2: Advanced Types of Bank Accounts
+#######################
+
+# --- Savings account tests ---
+
+def test_savings_account_creation():
+    account = SavingsAccount(owner="Ivan Petrov", balance=1000, currency="RUB")
+    assert account.owner == "Ivan Petrov"
+    assert account.balance == Decimal("1000.00")
+    assert account.currency == "RUB"
+    assert account.status == AccountStatus.ACTIVE
+    assert account.min_balance == Decimal("0.00")
+    assert account.interest_rate == 0.01
+    assert account.account_number
+
+
+def test_savings_account_minimum_balance():
+    account = SavingsAccount(owner="Ivan Petrov", balance=1000, min_balance=100)
+    # Should be able to withdraw down to min_balance
+    account.withdraw(900)
+    assert account.balance == Decimal("100.00")
+
+    # Should not allow withdrawal below min_balance
+    with pytest.raises(InsufficientFundsError):
+        account.withdraw(50)
+
+
+def test_savings_account_withdrawal_limit():
+    """Test that SavingsAccount respects withdrawal limit."""
+    # Create savings account with sufficient balance above min_balance
+    account = SavingsAccount(
+        owner="Ivan Petrov", balance=1000000, min_balance=100, withdrawal_limit=50000
+    )
+    assert account.withdrawal_limit == Decimal("50000.00")
+
+    # Withdrawal within limit and above min_balance should work
+    account.withdraw(40000)
+    assert account.balance == Decimal("960000.00")
+
+    # Withdrawal exceeding limit should fail
+    with pytest.raises(InsufficientFundsError) as exc_info:
+        account.withdraw(60000)
+    assert "exceeds daily limit" in str(exc_info.value)
+
+
+def test_savings_account_apply_interest():
+    account = SavingsAccount(owner="Ivan Petrov", balance=1000, interest_rate=0.05)
+    interest_before = account.apply_monthly_interest()
+    assert interest_before > Decimal("1000.00")
+
+
+def test_savings_account_get_account_info():
+    account = SavingsAccount(
+        owner="Ivan Petrov", balance=1000, min_balance=100, interest_rate=0.02
+    )
+    info = account.get_account_info()
+    assert info["min_balance"] == Decimal("100.00")
+    assert info["interest_rate"] == 0.02
+
+
+# --- Premium account tests ---
+
+def test_premium_account_creation():
+    account = PremiumAccount(owner="Anna Smirnova", balance=5000, currency="USD")
+    assert account.owner == "Anna Smirnova"
+    assert account.balance == Decimal("5000.00")
+    assert account.currency == "USD"
+    assert account.status == AccountStatus.ACTIVE
+    assert account.overdraft_limit == Decimal("50000.00")
+    assert account.fixed_fee == Decimal("100.00")
+    assert account.account_number
+
+
+def test_premium_account_overdraft():
+    account = PremiumAccount(
+        owner="Anna Smirnova", balance=500, overdraft_limit=1000, fixed_fee=10
+    )
+    # Withdrawal with fee should work within overdraft
+    account.withdraw(600)
+    assert account.balance == Decimal("-110.00")  # 500 - (600 + 10)
+
+
+def test_premium_account_without_overdraft():
+    account = PremiumAccount(
+        owner="Anna Smirnova", balance=100, overdraft_limit=0, fixed_fee=50
+    )
+    with pytest.raises(InsufficientFundsError):
+        account.withdraw(200)
+
+
+def test_premium_account_withdrawal_limit():
+    """Test that PremiumAccount respects its higher withdrawal limit."""
+    # Create premium account with default limit and sufficient balance
+    account = PremiumAccount(owner="Anna Smirnova", balance=1000000)
+    assert account.withdrawal_limit == Decimal("500000.00")
+
+    # Withdrawal within limit should work (includes fixed fee)
+    account.withdraw(200000)
+    assert account.balance == Decimal("799900.00")  # 1000000 - (200000 + 100)
+
+    # Withdrawal exceeding limit should fail
+    with pytest.raises(InsufficientFundsError) as exc_info:
+        account.withdraw(600000)
+    assert "exceeds daily limit" in str(exc_info.value)
+
+
+def test_premium_account_withdrawal_limit_vs_overdraft():
+    """Test that PremiumAccount withdrawal limit is checked before overdraft."""
+    # Create premium account with overdraft
+    account = PremiumAccount(
+        owner="Anna Smirnova",
+        balance=1000000,
+        overdraft_limit=50000,
+    )
+
+    # Withdrawal within both limits should work
+    account.withdraw(150000)
+    assert account.balance == Decimal("849900.00")  # 1000000 - (150000 + 100)
+
+    # Withdrawal within overdraft but exceeding withdrawal limit should fail
+    # Daily limit is 500000, so try to withdraw more than that (including fee)
+    with pytest.raises(InsufficientFundsError) as exc_info:
+        account.withdraw(499901)  # 499901 + 100 fee = 500001 > 500000 limit
+    assert "exceeds daily limit" in str(exc_info.value)
+
+
+def test_premium_account_get_account_info():
+    account = PremiumAccount(
+        owner="Anna Smirnova", balance=5000, overdraft_limit=10000, fixed_fee=100
+    )
+    info = account.get_account_info()
+    assert info["overdraft_limit"] == Decimal("10000.00")
+    assert info["fixed_fee"] == Decimal("100.00")
+
+
+# --- Investment account tests ---
+
+def test_investment_account_creation():
+    account = InvestmentAccount(owner="Petr Ivanov", balance=10000, currency="EUR")
+    assert account.owner == "Petr Ivanov"
+    assert account.balance == Decimal("10000.00")
+    assert account.currency == "EUR"
+    assert account.status == AccountStatus.ACTIVE
+    assert len(account.portfolio) == 3  # stocks, bonds, etf
+    assert account.account_number
+
+
+def test_investment_account_allocate():
+    account = InvestmentAccount(owner="Petr Ivanov", balance=10000, currency="EUR")
+    account.allocate("stocks", 1000)
+    account.allocate("bonds", 500)
+    account.allocate("etf", 300)
+    assert account.balance == Decimal("8200.00")
+    assert account.portfolio["stocks"] == Decimal("1000.00")
+    assert account.portfolio["bonds"] == Decimal("500.00")
+    assert account.portfolio["etf"] == Decimal("300.00")
+
+
+def test_investment_account_allocate_unsupported_asset():
+    account = InvestmentAccount(owner="Petr Ivanov", balance=10000, currency="EUR")
+    with pytest.raises(InvalidOperationError):
+        account.allocate("real_estate", 100)
+
+
+def test_investment_account_allocate_insufficient_funds():
+    account = InvestmentAccount(owner="Petr Ivanov", balance=0, currency="EUR")
+    with pytest.raises(InsufficientFundsError):
+        account.allocate("stocks", 500)
+
+
+def test_investment_account_project_yearly_growth():
+    account = InvestmentAccount(owner="Petr Ivanov", balance=1800, currency="EUR")
+    account.allocate("stocks", 1000)
+    account.allocate("bonds", 500)
+    account.allocate("etf", 300)
+    growth = account.project_yearly_growth({"stocks": 0.10, "bonds": 0.04, "etf": 0.07})
+    expected_growth = Decimal("141.00")  # 1000*0.10 + 500*0.04 + 300*0.07
+    assert growth == expected_growth
+
+
+def test_investment_account_project_yearly_growth_unsupported():
+    account = InvestmentAccount(owner="Petr Ivanov", balance=10000, currency="EUR")
+    with pytest.raises(InvalidOperationError):
+        account.project_yearly_growth({"stocks": 0.10, "unknown": 0.05})
+
+
+def test_investment_account_withdraw():
+    account = InvestmentAccount(owner="Petr Ivanov", balance=5000, currency="EUR")
+    account.withdraw(1000)
+    assert account.balance == Decimal("4000.00")
+
+
+def test_investment_account_withdrawal_limit():
+    """Test that InvestmentAccount respects withdrawal limit."""
+    # Create investment account with sufficient balance
+    account = InvestmentAccount(
+        owner="Petr Ivanov", balance=1000000, withdrawal_limit=50000
+    )
+    assert account.withdrawal_limit == Decimal("50000.00")
+
+    # Withdrawal within limit should work
+    account.withdraw(20000)
+    assert account.balance == Decimal("980000.00")
+
+    # Withdrawal exceeding limit should fail
+    with pytest.raises(InsufficientFundsError) as exc_info:
+        account.withdraw(60001)
+    assert "exceeds daily limit" in str(exc_info.value)
+
+
+def test_investment_account_get_account_info():
+    account = InvestmentAccount(owner="Petr Ivanov", balance=5000, currency="EUR")
+    account.allocate("stocks", 1000)
+    info = account.get_account_info()
+    assert info["portfolio_value"] == Decimal("1000.00")
+    assert info["total_balance"] == Decimal("5000.00")
+
+
+def test_investment_account_str():
+    account = InvestmentAccount(owner="Petr Ivanov", balance=5000, currency="EUR")
+    account.allocate("stocks", 1000)
+    str_repr = str(account)
+    assert "InvestmentAccount" in str_repr
+    assert "5000.00" in str_repr
+    assert "EUR" in str_repr
+    assert "stocks: 1000.00" in str_repr
+
+
+# --- Polymorphism tests ---
+
+def test_polymorphic_withdraw():
+    """Test that withdraw works differently for each account type."""
+    savings = SavingsAccount(owner="Ivan", balance=1000, min_balance=100)
+    premium = PremiumAccount(
+        owner="Anna", balance=500, overdraft_limit=1000, fixed_fee=10
+    )
+    investment = InvestmentAccount(owner="Petr", balance=1000, currency="EUR")
+
+    # All should have withdraw method
+    savings.withdraw(500)
+    premium.withdraw(200)
+    investment.withdraw(100)
+
+
+def test_polymorphic_get_account_info():
+    """Test that get_account_info includes type-specific fields."""
+    savings = SavingsAccount(
+        owner="Ivan", balance=1000, min_balance=100, interest_rate=0.02
+    )
+    premium = PremiumAccount(
+        owner="Anna", balance=5000, overdraft_limit=10000, fixed_fee=100
+    )
+    investment = InvestmentAccount(owner="Petr", balance=1000, currency="EUR")
+
+    savings_info = savings.get_account_info()
+    premium_info = premium.get_account_info()
+    investment_info = investment.get_account_info()
+
+    assert "min_balance" in savings_info
+    assert "interest_rate" in savings_info
+    assert "overdraft_limit" in premium_info
+    assert "fixed_fee" in premium_info
+    assert "portfolio" in investment_info
+
+
+def test_polymorphic_str():
+    """Test that __str__ includes type-specific information."""
+    savings = SavingsAccount(
+        owner="Ivan", balance=1000, min_balance=100, interest_rate=0.02
+    )
+    premium = PremiumAccount(
+        owner="Anna", balance=5000, overdraft_limit=10000, fixed_fee=100
+    )
+    investment = InvestmentAccount(owner="Petr", balance=1000, currency="EUR")
+
+    assert "SavingsAccount" in str(savings)
+    assert "Min balance" in str(savings)
+    assert "PremiumAccount" in str(premium)
+    assert "Overdraft limit" in str(premium)
+    assert "InvestmentAccount" in str(investment)
+    assert "Portfolio" in str(investment)
+
+# ======================================
+# Day 3: Bank System::Security::Prohibited Hours
+# ======================================
+
+def test_check_prohibited_hours_deposit(mock_datetime):
+    """Test that deposit during prohibited hours (00:00-05:00) raises TransactionProhibitedError."""
+    from datetime import datetime
+
+    mock_datetime.now.return_value = datetime(2024, 1, 1, 3, 0, 0)  # 03:00 AM
+
+    account = BankAccount(owner="Ivan Petrov", balance=1000)
+
+    with pytest.raises(TransactionProhibitedError) as exc_info:
+        account.deposit(100)
+    assert "prohibited" in str(exc_info.value).lower()
+
+
+def test_check_prohibited_hours_withdraw(mock_datetime):
+    """Test that withdrawal during prohibited hours (00:00-05:00) raises TransactionProhibitedError."""
+    from datetime import datetime
+
+    mock_datetime.now.return_value = datetime(2024, 1, 1, 2, 30, 0)  # 02:30 AM
+
+    account = BankAccount(owner="Ivan Petrov", balance=1000)
+
+    with pytest.raises(TransactionProhibitedError) as exc_info:
+        account.withdraw(100)
+    assert "prohibited" in str(exc_info.value).lower()
+
+
+def test_check_prohibited_hours_boundary_start(mock_datetime):
+    """Test that transaction at exactly 00:00 raises TransactionProhibitedError."""
+    from datetime import datetime
+
+    mock_datetime.now.return_value = datetime(2024, 1, 1, 0, 0, 0)  # 00:00 AM
+
+    account = BankAccount(owner="Ivan Petrov", balance=1000)
+
+    with pytest.raises(TransactionProhibitedError):
+        account.deposit(100)
+
+
+def test_check_prohibited_hours_boundary_end(mock_datetime):
+    """Test that transaction at exactly 05:00 does NOT raise error (prohibited hours end at 05:00)."""
+    from datetime import datetime
+
+    mock_datetime.now.return_value = datetime(2024, 1, 1, 5, 0, 0)  # 05:00 AM
+
+    account = BankAccount(owner="Ivan Petrov", balance=1000)
+
+    # Should NOT raise error at 05:00 (prohibited hours are 00:00-05:00 exclusive)
+    account.deposit(100)
+    assert account.balance == Decimal("1100.00")
+
+
+def test_check_prohibited_hours_savings_account(mock_datetime):
+    """Test that savings account withdrawal during prohibited hours raises TransactionProhibitedError."""
+    from datetime import datetime
+
+    mock_datetime.now.return_value = datetime(2024, 1, 1, 4, 0, 0)  # 04:00 AM
+
+    account = SavingsAccount(owner="Ivan Petrov", balance=1000, min_balance=100)
+
+    with pytest.raises(TransactionProhibitedError):
+        account.withdraw(100)
+
+
+def test_check_prohibited_hours_premium_account(mock_datetime):
+    """Test that premium account withdrawal during prohibited hours raises TransactionProhibitedError."""
+    from datetime import datetime
+
+    mock_datetime.now.return_value = datetime(2024, 1, 1, 1, 0, 0)  # 01:00 AM
+
+    account = PremiumAccount(
+        owner="Ivan Petrov", balance=1000, overdraft_limit=500, fixed_fee=10
+    )
+
+    with pytest.raises(TransactionProhibitedError):
+        account.withdraw(100)
+
+
+def test_check_prohibited_hours_investment_account(mock_datetime):
+    """Test that investment account allocation during prohibited hours raises TransactionProhibitedError."""
+    from datetime import datetime
+
+    mock_datetime.now.return_value = datetime(2024, 1, 1, 3, 30, 0)  # 03:30 AM
+
+    account = InvestmentAccount(owner="Ivan Petrov", balance=1000, currency="EUR")
+
+    with pytest.raises(TransactionProhibitedError):
+        account.allocate("stocks", 100)
