@@ -598,4 +598,51 @@ class ReportBuilder:
         self._figures[title] = fig
         return fig
 
-    
+    # ==================== Save Charts ====================
+
+    def save_charts(self, directory: str = "charts") -> list[str]:
+        """Save all generated charts to files in the specified directory.
+
+        Args:
+            directory: Directory to save chart images in.
+
+        Returns:
+            List of saved file paths.
+        """
+        if not os.path.isdir(directory):
+            os.makedirs(directory, exist_ok=True)
+
+        saved_paths: list[str] = []
+        for title, fig in self._figures.items():
+            safe_title = "".join(
+                c if c.isalnum() or c in (" ", "-", "_") else "_" for c in title
+            )
+            safe_title = safe_title.strip().replace(" ", "_")
+            filepath = os.path.join(directory, f"{safe_title}.png")
+
+            fig.savefig(filepath, dpi=150, bbox_inches="tight")
+            plt.close(fig)
+            self._chart_paths[title] = filepath
+            saved_paths.append(filepath)
+
+        self._figures.clear()
+        return saved_paths
+
+    # ==================== Properties ====================
+
+    @property
+    def reports(self) -> dict[str, dict[str, Any]]:
+        """Return all generated reports."""
+        return dict(self._reports)
+
+    @property
+    def charts(self) -> dict[str, str]:
+        """Return all saved chart file paths."""
+        return dict(self._chart_paths)
+
+    def __repr__(self) -> str:
+        return (
+            f"ReportBuilder(bank={self._bank.name!r}, "
+            f"reports={len(self._reports)}, charts={len(self._chart_paths)})"
+        )
+ 
