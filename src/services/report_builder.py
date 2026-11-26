@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 from ..exceptions import InvalidOperationError
 from ..models.bank import Bank
-from ..services.risk_analyzer import RiskAnalyzer, RiskLevel
+from ..services.risk_analyzer import RiskAnalyzer
 
 # ======================================
 # Day 7: Reporting and Data Visualization System
