@@ -1,3 +1,5 @@
 __pycache__/
+charts
+reports
 *.pyc
 test_logs.txt
