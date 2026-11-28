@@ -363,18 +363,6 @@ def main():
         print(f"Found {len(ivan_accounts)} accounts for Ivan")
         print(*ivan_accounts, "\n")
 
-        # Get total balance
-        print("--- Getting total balance ---")
-        total = bank.get_total_balance()
-        print(f"Total balance across all accounts: {total} RUB")
-
-        # Get ranking
-        print("\n--- Getting client ranking ---")
-        ranking = bank.get_clients_ranking()
-        print(f"Ranking: {len(ranking)} clients")
-        for i, (client, balance) in enumerate(ranking, 1):
-            print(f"  {i}. {client.full_name}: {balance} {client.contact_details}")
-
         # Close account
         print("\n--- Closing account ---")
         try:
@@ -748,6 +736,20 @@ def main():
             print(
                 f"  {entry.timestamp} [{entry.severity.value.upper()}] {entry.message}"
             )
+
+        # Day 3 summary: 
+        # Total balance and client ranking for this bank.
+        print("\n--- Getting total balance ---")
+        total = bank.get_total_balance()
+        print(f"Total balance across all accounts: {total} RUB")
+
+        # Get ranking
+        print("\n--- Getting client ranking ---")
+        ranking = bank.get_clients_ranking()
+        print(f"Ranking: {len(ranking)} clients")
+        for i, (client, balance) in enumerate(ranking, 1):
+            print(f"  {i}. {client.full_name}: {balance} {client.contact_details}")
+
 
 # Day 6: Demo Program
 def day6_demo():
