@@ -785,9 +785,23 @@ class TransactionProcessor:
         try:
             self._validate_business_rules(transaction)
 
+            # Resolve the client owning the sender account so that risk analysis
+            # is attributed to the correct client profile instead of a
+            # hard-coded one (e.g. every transaction landing in CL001's profile).
+            client_id = None
+            if self._risk_analyzer is not None and transaction.sender:
+                sender_account = self._accounts.get(transaction.sender)
+                if (
+                    sender_account is not None
+                    and getattr(sender_account, "client", None) is not None
+                ):
+                    client_id = sender_account.client.client_id
+
             # High-risk transactions are marked FAILED with a reason
             if self._risk_analyzer is not None:
-                level = self._risk_analyzer.analyze_transaction(transaction)
+                level = self._risk_analyzer.analyze_transaction(
+                    transaction, client_id=client_id
+                )
 
                 from ..services.risk_analyzer import RiskLevel
                 if level == RiskLevel.HIGH:
