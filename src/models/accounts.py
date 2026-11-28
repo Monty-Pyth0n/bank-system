@@ -107,6 +107,11 @@ class BankAccount(AbstractAccount):
     def status(self):
         return self._status
 
+    @property
+    def client(self):
+        """Return the linked :class:`Client` object, or ``None`` if unlinked."""
+        return self._client
+
     def _check_status(self):
         """Ensure that the account can perform operations."""
         if self._status == AccountStatus.FROZEN:
