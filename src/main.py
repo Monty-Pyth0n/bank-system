@@ -872,8 +872,18 @@ def day6_demo():
         bank.freeze_account(anna_checking.account_number)
         print(f"\nFrozen account: {anna_checking.account_number} (Anna's checking)")
 
-        # Create transaction processor
-        processor = TransactionProcessor(accounts=all_accounts)
+        # Create the audit log and risk analyzer BEFORE the processor, and
+        # register all bank accounts as known recipients. The analyzer must
+        # be wired to the processor so that high-risk transactions are
+        # rejected before any funds are moved — not after the fact.
+        audit_log = AuditLog()
+        analyzer = RiskAnalyzer(audit_log=audit_log)
+        for acc_num in all_accounts:
+            analyzer.register_known_recipient(acc_num)
+
+        # Create transaction processor wired to the risk analyzer so that
+        # high-risk transactions are blocked before any balances change.
+        processor = TransactionProcessor(accounts=all_accounts, risk_analyzer=analyzer)
         queue = processor.queue
 
         # --- Create 35 transactions ---
@@ -1232,34 +1242,21 @@ def day6_demo():
             )
         print(f"  Total failed: {len(processor.error_log)}")
 
-        # Risk Analysis - Suspicious transactions
+        # Risk analysis results. Every transaction was already analyzed by
+        # the risk analyzer while it was being processed (the processor was
+        # created with ``risk_analyzer=analyzer``), so high-risk operations
+        # were rejected before any funds were moved. Here we only report —
+        # completed transactions are never re-analyzed or modified.
         print("\n=== RISK ANALYSIS ===")
 
-        audit_log = AuditLog()
-        analyzer = RiskAnalyzer(audit_log=audit_log)
-
-        # Register known recipients (internal bank accounts)
-        for acc_num in all_accounts:
-            analyzer.register_known_recipient(acc_num)
-
-        # Analyze all transactions for risk
-        print("\n--- Analyzing transactions for risk ---")
-        for txn in txns:
-            level = analyzer.analyze_transaction(txn, client_id="CL001")
-            blocked = " [BLOCKED]" if level == RiskLevel.HIGH else ""
-            reason = f" - {txn.failure_reason}" if txn.failure_reason else ""
-            print(
-                f"  {txn.id}: {txn.amount} {txn.currency} -> {level.value}{blocked}"
-                f" [status={txn.status.value}{reason}]"
-            )
-
-        # Show blocked transactions
+        # Show blocked transactions (rejected as high-risk during processing)
         blocked_txns = analyzer.get_blocked_transactions()
         print(f"\n--- Blocked transactions ({len(blocked_txns)}) ---")
         for txn in blocked_txns:
-            print(f"  {txn.id}: {txn.amount} {txn.currency} - BLOCKED")
+            reason = f" - {txn.failure_reason}" if txn.failure_reason else ""
+            print(f"  {txn.id}: {txn.amount} {txn.currency} - BLOCKED{reason}")
 
-        # Show suspicious transactions
+        # Show suspicious transactions (risk >= MEDIUM)
         suspicious = analyzer.get_suspicious_transactions()
         print(f"\n--- Suspicious transactions ({len(suspicious)}) ---")
         for entry in suspicious:
@@ -1267,17 +1264,6 @@ def day6_demo():
                 f"  {entry['transaction_id']}: {entry['risk_level'].value} "
                 f"(score={entry['risk_score']})"
             )
-
-        # Show risk profile
-        profile = analyzer.get_risk_profile("CL001")
-        print("\n--- Client risk profile (CL001) ---")
-        if profile:
-            print(f"  Overall risk level: {profile['overall_risk_level'].value}")
-            print(f"  Total transactions: {profile['total_transactions']}")
-            print(f"  High risk: {profile['high_risk_count']}")
-            print(f"  Medium risk: {profile['medium_risk_count']}")
-            print(f"  Low risk: {profile['low_risk_count']}")
-            print(f"  Average risk score: {profile['average_risk_score']}")
 
         # Show statistics
         rstats = analyzer.get_error_statistics()
@@ -1327,6 +1313,16 @@ def day6_demo():
                 f"  {entry['transaction_id']}: {entry['risk_level'].value} "
                 f"(score={entry['risk_score']})"
             )
+
+        # 4d. Summary: top-3 clients and total bank balance (current simulation).
+        print("\n=== DAY 6 SUMMARY ===")
+        total = bank.get_total_balance()
+        print(f"Total balance across all accounts: {total} RUB")
+        ranking = bank.get_clients_ranking()
+        print(f"Top-3 clients by balance (of {len(ranking)}):")
+        for i, (client, balance) in enumerate(ranking[:3], 1):
+            print(f"  {i}. {client.full_name} ({client.client_id}): {balance} RUB")
+
         print()
         print("           DAY 6 DEMO COMPLETE")
         print()
