@@ -288,18 +288,20 @@ class RiskAnalyzer:
         if client_id:
             self._update_risk_profile(client_id, level, risk_score, reasons)
 
-        # Block high-risk transactions
-        if level == RiskLevel.HIGH:
+        # Block high-risk transactions. A transaction that is already
+        # finalized (executed earlier) must not be touched: its status and
+        # the moved funds are immutable, and it must not be reported as
+        # blocked after the fact.
+        if level == RiskLevel.HIGH and not transaction.is_finalized():
             self._blocked_transactions.append(transaction)
-            if not transaction.is_finalized():
-                transaction._set_status(
-                    TransactionStatus.FAILED,
-                    failure_reason=(
-                        f"High risk transaction blocked: {', '.join(reasons)}"
-                        if reasons
-                        else "High risk transaction blocked"
-                    ),
-                )
+            transaction._set_status(
+                TransactionStatus.FAILED,
+                failure_reason=(
+                    f"High risk transaction blocked: {', '.join(reasons)}"
+                    if reasons
+                    else "High risk transaction blocked"
+                ),
+            )
             security_logger.warning(
                 f"HIGH RISK: Transaction {transaction.id} blocked. "
                 f"Reasons: {', '.join(reasons)}"
